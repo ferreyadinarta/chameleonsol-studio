@@ -2,16 +2,56 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { useThree } from '@react-three/fiber';
 import { usePaintStore } from '../store/usePaintStore';
-import { paintStroke, sampleAlbedo, type PaintCanvases } from './PaintablePart';
+import { paintStroke, sampleAlbedo, resetCanvases, paintableMeshes, TEX_SIZE, type PaintCanvases } from './PaintablePart';
+
+type GestureSnapshot = Map<THREE.Mesh, { albedo: ImageData; orm: ImageData }>;
+
+const UNDO_LIMIT = 20;
 
 export default function PaintController() {
   const { gl, camera, scene } = useThree();
   const paintingRef = useRef(false);
   const raycaster = useRef(new THREE.Raycaster());
   const pointer = useRef(new THREE.Vector2());
+  const undoStackRef = useRef<GestureSnapshot[]>([]);
+  const currentGestureRef = useRef<GestureSnapshot | null>(null);
 
   useEffect(() => {
     const dom = gl.domElement;
+
+    const markDirty = (mesh: THREE.Mesh) => {
+      (mesh.userData.albedoTexture as THREE.CanvasTexture).needsUpdate = true;
+      (mesh.userData.ormTexture as THREE.CanvasTexture).needsUpdate = true;
+    };
+
+    const snapshotMesh = (mesh: THREE.Mesh) => {
+      const canvases = mesh.userData.canvases as PaintCanvases;
+      return {
+        albedo: canvases.albedoCtx.getImageData(0, 0, TEX_SIZE, TEX_SIZE),
+        orm: canvases.ormCtx.getImageData(0, 0, TEX_SIZE, TEX_SIZE),
+      };
+    };
+
+    const unsubUndo = usePaintStore.subscribe((state, prev) => {
+      if (state.undoSignal === prev.undoSignal) return;
+      const gesture = undoStackRef.current.pop();
+      if (!gesture) return;
+      gesture.forEach((snap, mesh) => {
+        const canvases = mesh.userData.canvases as PaintCanvases;
+        canvases.albedoCtx.putImageData(snap.albedo, 0, 0);
+        canvases.ormCtx.putImageData(snap.orm, 0, 0);
+        markDirty(mesh);
+      });
+    });
+
+    const unsubClear = usePaintStore.subscribe((state, prev) => {
+      if (state.clearSignal === prev.clearSignal) return;
+      paintableMeshes.forEach((mesh) => {
+        resetCanvases(mesh.userData.canvases as PaintCanvases);
+        markDirty(mesh);
+      });
+      undoStackRef.current = [];
+    });
 
     const castAt = (clientX: number, clientY: number) => {
       const rect = dom.getBoundingClientRect();
@@ -42,6 +82,7 @@ export default function PaintController() {
 
       if (hit.object.userData.paintable && hit.uv) {
         paintingRef.current = true;
+        currentGestureRef.current = new Map();
         applyStroke(hit.object as THREE.Mesh, hit.uv);
       }
     };
@@ -56,14 +97,23 @@ export default function PaintController() {
 
     const onUp = () => {
       paintingRef.current = false;
+      const gesture = currentGestureRef.current;
+      currentGestureRef.current = null;
+      if (gesture && gesture.size > 0) {
+        undoStackRef.current.push(gesture);
+        if (undoStackRef.current.length > UNDO_LIMIT) undoStackRef.current.shift();
+      }
     };
 
     function applyStroke(mesh: THREE.Mesh, uv: THREE.Vector2) {
+      const gesture = currentGestureRef.current;
+      if (gesture && !gesture.has(mesh)) {
+        gesture.set(mesh, snapshotMesh(mesh));
+      }
       const { tool, color, metalness, roughness, brushSize } = usePaintStore.getState();
       const canvases = mesh.userData.canvases as PaintCanvases;
       paintStroke(canvases, uv, color, metalness, roughness, brushSize, tool === 'eraser');
-      (mesh.userData.albedoTexture as THREE.CanvasTexture).needsUpdate = true;
-      (mesh.userData.ormTexture as THREE.CanvasTexture).needsUpdate = true;
+      markDirty(mesh);
     }
 
     dom.addEventListener('pointerdown', onDown);
@@ -73,6 +123,8 @@ export default function PaintController() {
       dom.removeEventListener('pointerdown', onDown);
       dom.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
+      unsubUndo();
+      unsubClear();
     };
   }, [gl, camera, scene]);
 

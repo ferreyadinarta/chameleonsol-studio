@@ -24,6 +24,7 @@ type PaintStore = {
   palette: string[];
   undoSignal: number;
   clearSignal: number;
+  saveSignal: number;
   setPaintMode: (on: boolean) => void;
   togglePaintMode: () => void;
   setTool: (tool: PaintTool) => void;
@@ -34,6 +35,7 @@ type PaintStore = {
   addPaletteColor: (hex: string) => void;
   requestUndo: () => void;
   requestClear: () => void;
+  requestSave: () => void;
 };
 
 export const usePaintStore = create<PaintStore>((set, get) => ({
@@ -46,6 +48,7 @@ export const usePaintStore = create<PaintStore>((set, get) => ({
   palette: loadPalette(),
   undoSignal: 0,
   clearSignal: 0,
+  saveSignal: 0,
   setPaintMode: (on) => set({ paintMode: on }),
   togglePaintMode: () => set({ paintMode: !get().paintMode }),
   setTool: (tool) => set({ tool }),
@@ -60,4 +63,7 @@ export const usePaintStore = create<PaintStore>((set, get) => ({
     set({ palette: next });
     localStorage.setItem(PALETTE_KEY, JSON.stringify(next));
   },
+  requestUndo: () => set({ undoSignal: get().undoSignal + 1 }),
+  requestClear: () => set({ clearSignal: get().clearSignal + 1 }),
+  requestSave: () => set({ saveSignal: get().saveSignal + 1 }),
 }));

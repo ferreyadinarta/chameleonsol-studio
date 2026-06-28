@@ -1,15 +1,23 @@
-import { useMemo, useRef } from 'react';
-import * as THREE from 'three';
-import { useFrame } from '@react-three/fiber';
-import { usePoseStore } from '../store/usePoseStore';
-import type { PoseJoints, Vec3 } from '../data/poses';
-import PaintablePart, { CLAY_COLOR, CLAY_ROUGHNESS, CLAY_METALNESS } from './PaintablePart';
+import { useMemo, useRef } from "react";
+import * as THREE from "three";
+import { useFrame } from "@react-three/fiber";
+import { usePoseStore } from "../store/usePoseStore";
+import type { PoseJoints, Vec3 } from "../data/poses";
+import PaintablePart, {
+  CLAY_COLOR,
+  CLAY_ROUGHNESS,
+  CLAY_METALNESS,
+} from "./PaintablePart";
 
 function JointCap({ radius, position }: { radius: number; position: Vec3 }) {
   return (
     <mesh position={position} castShadow receiveShadow>
       <sphereGeometry args={[radius, 18, 14]} />
-      <meshStandardMaterial color={CLAY_COLOR} roughness={CLAY_ROUGHNESS} metalness={CLAY_METALNESS} />
+      <meshStandardMaterial
+        color={CLAY_COLOR}
+        roughness={CLAY_ROUGHNESS}
+        metalness={CLAY_METALNESS}
+      />
     </mesh>
   );
 }
@@ -22,19 +30,43 @@ function lerpVec3(a: Vec3, b: Vec3, t: number): Vec3 {
   ];
 }
 
-function blendJoints(locked: PoseJoints, hovered: PoseJoints | null, t: number): PoseJoints {
+function blendJoints(
+  locked: PoseJoints,
+  hovered: PoseJoints | null,
+  t: number,
+): PoseJoints {
   if (!hovered || t <= 0) return locked;
   return {
     root: {
       rotation: lerpVec3(locked.root.rotation, hovered.root.rotation, t),
       position: lerpVec3(locked.root.position, hovered.root.position, t),
     },
-    torso: { rotation: lerpVec3(locked.torso.rotation, hovered.torso.rotation, t) },
-    head: { rotation: lerpVec3(locked.head.rotation, hovered.head.rotation, t) },
-    leftArm: { rotation: lerpVec3(locked.leftArm.rotation, hovered.leftArm.rotation, t) },
-    rightArm: { rotation: lerpVec3(locked.rightArm.rotation, hovered.rightArm.rotation, t) },
-    leftLeg: { rotation: lerpVec3(locked.leftLeg.rotation, hovered.leftLeg.rotation, t) },
-    rightLeg: { rotation: lerpVec3(locked.rightLeg.rotation, hovered.rightLeg.rotation, t) },
+    torso: {
+      rotation: lerpVec3(locked.torso.rotation, hovered.torso.rotation, t),
+    },
+    head: {
+      rotation: lerpVec3(locked.head.rotation, hovered.head.rotation, t),
+    },
+    leftArm: {
+      rotation: lerpVec3(locked.leftArm.rotation, hovered.leftArm.rotation, t),
+    },
+    rightArm: {
+      rotation: lerpVec3(
+        locked.rightArm.rotation,
+        hovered.rightArm.rotation,
+        t,
+      ),
+    },
+    leftLeg: {
+      rotation: lerpVec3(locked.leftLeg.rotation, hovered.leftLeg.rotation, t),
+    },
+    rightLeg: {
+      rotation: lerpVec3(
+        locked.rightLeg.rotation,
+        hovered.rightLeg.rotation,
+        t,
+      ),
+    },
   };
 }
 
@@ -58,7 +90,8 @@ export default function Character() {
   );
 
   useFrame(() => {
-    const { lockedPoseId, hoveredPoseId, glideAmount, getPose } = usePoseStore.getState();
+    const { lockedPoseId, hoveredPoseId, glideAmount, getPose } =
+      usePoseStore.getState();
     const locked = getPose(lockedPoseId).joints;
     const hovered = hoveredPoseId ? getPose(hoveredPoseId).joints : null;
     const joints = blendJoints(locked, hovered, glideAmount);

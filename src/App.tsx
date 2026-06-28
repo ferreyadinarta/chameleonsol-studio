@@ -37,7 +37,9 @@ function App() {
             Chameleon<em>Sol</em>
           </span>
         </div>
-        <div className="studio-status-pill">{paintMode ? 'BODY PAINT' : currentLabel.toUpperCase()}</div>
+        <div className="studio-status-pill">
+          {paintMode ? `DRAWING: ${currentLabel.toUpperCase()}` : currentLabel.toUpperCase()}
+        </div>
       </header>
 
       <div className={paintMode ? 'studio-stage studio-stage--painting' : 'studio-stage'}>
@@ -48,9 +50,17 @@ function App() {
         <BrushCursor />
       </div>
 
-      {!wheelOpen && !paintMode && (
-        <div className="studio-bottom-hint">
-          Hold <kbd>R</kbd> — Pose Wheel &nbsp;·&nbsp; Hold <kbd>F</kbd> — Body Paint
+      {!wheelOpen && (
+        <div className={paintMode ? 'studio-bottom-hint studio-bottom-hint--paint' : 'studio-bottom-hint'}>
+          {paintMode ? (
+            <>
+              Hold <kbd>R</kbd> — Pose Wheel
+            </>
+          ) : (
+            <>
+              Hold <kbd>R</kbd> — Pose Wheel &nbsp;·&nbsp; Hold <kbd>F</kbd> — Body Paint
+            </>
+          )}
         </div>
       )}
 

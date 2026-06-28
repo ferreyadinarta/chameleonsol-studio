@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { usePaintStore } from '../store/usePaintStore';
 
 const GALLERY_KEY = 'chameleonsol-gallery';
 
@@ -29,6 +30,18 @@ export default function Gallery({ captureRef }: Props) {
     if (!dataUrl) return;
     setShots((prev) => [dataUrl, ...prev].slice(0, 24));
   };
+
+  const handleSaveRef = useRef(handleSave);
+  handleSaveRef.current = handleSave;
+
+  useEffect(
+    () =>
+      usePaintStore.subscribe((state, prev) => {
+        if (state.saveSignal === prev.saveSignal) return;
+        handleSaveRef.current();
+      }),
+    [],
+  );
 
   const handleDownload = (dataUrl: string, index: number) => {
     const a = document.createElement('a');
