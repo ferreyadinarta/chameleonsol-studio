@@ -20,6 +20,7 @@ type Props = {
 export default function Gallery({ captureRef }: Props) {
   const [shots, setShots] = useState<string[]>(loadGallery);
   const [open, setOpen] = useState(false);
+  const [preview, setPreview] = useState<number | null>(null);
 
   useEffect(() => {
     localStorage.setItem(GALLERY_KEY, JSON.stringify(shots));
@@ -29,6 +30,7 @@ export default function Gallery({ captureRef }: Props) {
     const dataUrl = captureRef.current?.();
     if (!dataUrl) return;
     setShots((prev) => [dataUrl, ...prev].slice(0, 24));
+    setOpen(true);
   };
 
   const handleSaveRef = useRef(handleSave);
@@ -52,6 +54,7 @@ export default function Gallery({ captureRef }: Props) {
 
   const handleRemove = (index: number) => {
     setShots((prev) => prev.filter((_, i) => i !== index));
+    setPreview(null);
   };
 
   return (
@@ -64,17 +67,40 @@ export default function Gallery({ captureRef }: Props) {
           Gallery ({shots.length})
         </button>
       </div>
-      {open && (
-        <div className="gallery-grid">
-          {shots.length === 0 && <div className="gallery-empty">No saved PFPs yet.</div>}
-          {shots.map((shot, i) => (
-            <div className="gallery-item" key={i}>
-              <img src={shot} alt={`PFP ${i + 1}`} onClick={() => handleDownload(shot, i)} />
-              <button className="gallery-item-remove" onClick={() => handleRemove(i)}>
-                ×
+      {open &&
+        (shots.length === 0 ? (
+          <div className="gallery-grid">
+            <div className="gallery-empty">No saved PFPs yet.</div>
+          </div>
+        ) : (
+          <div className="gallery-grid">
+            {shots.map((shot, i) => (
+              <div className="gallery-item" key={i}>
+                <img src={shot} alt={`PFP ${i + 1}`} onClick={() => setPreview(i)} />
+                <button className="gallery-item-remove" onClick={() => handleRemove(i)}>
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        ))}
+
+      {preview !== null && shots[preview] && (
+        <div className="pfp-modal-overlay" onClick={() => setPreview(null)}>
+          <div className="pfp-modal" onClick={(e) => e.stopPropagation()}>
+            <button className="pfp-modal-close" onClick={() => setPreview(null)}>
+              ×
+            </button>
+            <img src={shots[preview]} alt={`PFP ${preview + 1}`} />
+            <div className="pfp-modal-actions">
+              <button className="save-pfp-btn" onClick={() => handleDownload(shots[preview], preview)}>
+                Download
+              </button>
+              <button className="gallery-toggle-btn" onClick={() => handleRemove(preview)}>
+                Delete
               </button>
             </div>
-          ))}
+          </div>
         </div>
       )}
     </div>

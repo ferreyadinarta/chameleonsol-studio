@@ -19,7 +19,7 @@ export type Pose = {
 const deg = (d: number) => (d * Math.PI) / 180;
 
 // Lifts the rig so feet rest at world y = 0 (see Character.tsx limb offsets).
-export const GROUND_LIFT = 0.97;
+export const GROUND_LIFT = 0.8;
 
 const base: PoseJoints = {
   root: { rotation: [0, 0, 0], position: [0, GROUND_LIFT, 0] },

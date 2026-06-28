@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { usePaintStore } from '../store/usePaintStore';
 
 const MIN_PX = 10;
@@ -16,30 +16,54 @@ export default function BrushCursor() {
   const tool = usePaintStore((s) => s.tool);
   const brushSize = usePaintStore((s) => s.brushSize);
   const color = usePaintStore((s) => s.color);
-  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+
   const visible = paintMode && (tool === 'brush' || tool === 'eraser');
-  const visibleRef = useRef(visible);
-  visibleRef.current = visible;
+  const elRef = useRef<HTMLDivElement>(null);
 
+  // Move the cursor by writing transform directly in a rAF-throttled pointer
+  // handler — no React state, so a fast drag never triggers re-renders.
   useEffect(() => {
-    const onMove = (e: PointerEvent) => {
-      if (!visibleRef.current) return;
-      setPos({ x: e.clientX, y: e.clientY });
-    };
-    window.addEventListener('pointermove', onMove);
-    return () => window.removeEventListener('pointermove', onMove);
-  }, []);
+    if (!visible) return;
+    let frame = 0;
+    let nextX = -100;
+    let nextY = -100;
+    let seen = false;
 
-  if (!visible || !pos) return null;
+    const flush = () => {
+      frame = 0;
+      const el = elRef.current;
+      if (el) {
+        if (!seen) {
+          el.style.opacity = '1';
+          seen = true;
+        }
+        el.style.transform = `translate(${nextX}px, ${nextY}px) translate(-50%, -50%)`;
+      }
+    };
+
+    const onMove = (e: PointerEvent) => {
+      nextX = e.clientX;
+      nextY = e.clientY;
+      if (!frame) frame = requestAnimationFrame(flush);
+    };
+
+    window.addEventListener('pointermove', onMove);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      if (frame) cancelAnimationFrame(frame);
+    };
+  }, [visible]);
+
+  if (!visible) return null;
 
   const diameter = sizeToDiameter(brushSize);
 
   return (
     <div
+      ref={elRef}
       className="brush-cursor"
       style={{
-        left: pos.x,
-        top: pos.y,
+        opacity: 0,
         width: diameter,
         height: diameter,
         borderColor: tool === 'eraser' ? '#2c2a26' : color,

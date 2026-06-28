@@ -54,11 +54,11 @@ function App() {
         <div className={paintMode ? 'studio-bottom-hint studio-bottom-hint--paint' : 'studio-bottom-hint'}>
           {paintMode ? (
             <>
-              Hold <kbd>R</kbd> — Pose Wheel
+              Hold <kbd>R</kbd> — Pose Wheel &nbsp;·&nbsp; Press <kbd>F</kbd> — Back to Normal View
             </>
           ) : (
             <>
-              Hold <kbd>R</kbd> — Pose Wheel &nbsp;·&nbsp; Hold <kbd>F</kbd> — Body Paint
+              Hold <kbd>R</kbd> — Pose Wheel &nbsp;·&nbsp; Press <kbd>F</kbd> — Body Paint
             </>
           )}
         </div>

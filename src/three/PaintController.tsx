@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { useThree } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import { usePaintStore } from '../store/usePaintStore';
 import { paintStroke, sampleAlbedo, resetCanvases, paintableMeshes, TEX_SIZE, type PaintCanvases } from './PaintablePart';
 
@@ -15,6 +15,25 @@ export default function PaintController() {
   const pointer = useRef(new THREE.Vector2());
   const undoStackRef = useRef<GestureSnapshot[]>([]);
   const currentGestureRef = useRef<GestureSnapshot | null>(null);
+
+  // Springy squish on a freshly painted part — the lively "clay" feedback.
+  useFrame((_, delta) => {
+    const dt = Math.min(delta, 0.05);
+    paintableMeshes.forEach((m) => {
+      let s = (m.userData.pulseScale as number) ?? 0;
+      let v = (m.userData.pulseVel as number) ?? 0;
+      if (s === 0 && v === 0) return;
+      v += (-220 * s - 22 * v) * dt;
+      s += v * dt;
+      if (Math.abs(s) < 0.0004 && Math.abs(v) < 0.0008) {
+        s = 0;
+        v = 0;
+      }
+      m.userData.pulseScale = s;
+      m.userData.pulseVel = v;
+      m.scale.setScalar(1 + s);
+    });
+  });
 
   useEffect(() => {
     const dom = gl.domElement;
@@ -53,7 +72,21 @@ export default function PaintController() {
       undoStackRef.current = [];
     });
 
-    const castAt = (clientX: number, clientY: number) => {
+    // Brush/eraser only need the paintable meshes — a flat, non-recursive
+    // raycast against ~16 meshes instead of walking the whole scene graph
+    // (lights, environment, shadows) on every pointer move.
+    const castPaintable = (clientX: number, clientY: number) => {
+      const rect = dom.getBoundingClientRect();
+      pointer.current.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+      pointer.current.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.current.setFromCamera(pointer.current, camera);
+      const hits = raycaster.current.intersectObjects(Array.from(paintableMeshes), false);
+      return hits[0];
+    };
+
+    // Eyedropper is a rare, single click — fine to walk the full scene so it
+    // can also sample the backdrop/floor colors.
+    const castAny = (clientX: number, clientY: number) => {
       const rect = dom.getBoundingClientRect();
       pointer.current.x = ((clientX - rect.left) / rect.width) * 2 - 1;
       pointer.current.y = -((clientY - rect.top) / rect.height) * 2 + 1;
@@ -66,10 +99,10 @@ export default function PaintController() {
       if (e.button !== 0) return;
       const { paintMode, tool } = usePaintStore.getState();
       if (!paintMode) return;
-      const hit = castAt(e.clientX, e.clientY);
-      if (!hit) return;
 
       if (tool === 'eyedropper') {
+        const hit = castAny(e.clientX, e.clientY);
+        if (!hit) return;
         let hex: string | null = null;
         if (hit.object.userData.paintable && hit.uv) {
           hex = sampleAlbedo(hit.object.userData.canvases as PaintCanvases, hit.uv);
@@ -80,7 +113,8 @@ export default function PaintController() {
         return;
       }
 
-      if (hit.object.userData.paintable && hit.uv) {
+      const hit = castPaintable(e.clientX, e.clientY);
+      if (hit && hit.uv) {
         paintingRef.current = true;
         currentGestureRef.current = new Map();
         applyStroke(hit.object as THREE.Mesh, hit.uv);
@@ -89,8 +123,8 @@ export default function PaintController() {
 
     const onMove = (e: PointerEvent) => {
       if (!paintingRef.current) return;
-      const hit = castAt(e.clientX, e.clientY);
-      if (hit && hit.object.userData.paintable && hit.uv) {
+      const hit = castPaintable(e.clientX, e.clientY);
+      if (hit && hit.uv) {
         applyStroke(hit.object as THREE.Mesh, hit.uv);
       }
     };
@@ -114,6 +148,10 @@ export default function PaintController() {
       const canvases = mesh.userData.canvases as PaintCanvases;
       paintStroke(canvases, uv, color, metalness, roughness, brushSize, tool === 'eraser');
       markDirty(mesh);
+
+      // nudge the squish spring; clamp so a long stroke stays a gentle wobble
+      const vel = ((mesh.userData.pulseVel as number) ?? 0) + 0.9;
+      mesh.userData.pulseVel = Math.min(vel, 2.4);
     }
 
     dom.addEventListener('pointerdown', onDown);

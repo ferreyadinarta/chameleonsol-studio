@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Environment, ContactShadows } from '@react-three/drei';
-import Character from './Character';
+import CharacterView from './CharacterView';
 import PaintController from './PaintController';
 import { usePaintStore } from '../store/usePaintStore';
 
@@ -63,7 +63,7 @@ export default function Scene({ captureRef }: Props) {
       <CamoSurface position={[0, 0, -1.4]} rotation={[0, 0, 0]} size={[6, 4]} color="#7fa893" />
       <CamoSurface position={[0, -0.001, 0]} rotation={[-Math.PI / 2, 0, 0]} size={[6, 6]} color="#b89766" />
 
-      <Character />
+      <CharacterView />
 
       <ContactShadows position={[0, 0, 0]} opacity={0.4} scale={4} blur={2} far={2} />
 

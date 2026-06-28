@@ -38,6 +38,39 @@ function makeCanvases(): PaintCanvases {
 
 export const paintableMeshes = new Set<THREE.Mesh>();
 
+// Shared striated bump map — mimics the layered, hand-sculpted clay surface
+// of the Meccha Chameleon figures. Stays under any paint the user applies.
+let clayBumpTexture: THREE.CanvasTexture | null = null;
+export function getClayBump(): THREE.CanvasTexture {
+  if (clayBumpTexture) return clayBumpTexture;
+  const size = 256;
+  const c = document.createElement('canvas');
+  c.width = size;
+  c.height = size;
+  const ctx = c.getContext('2d')!;
+  ctx.fillStyle = '#808080';
+  ctx.fillRect(0, 0, size, size);
+  for (let y = 0; y < size; y += 1) {
+    const wobble = Math.sin(y * 0.7) * 6 + Math.sin(y * 0.21) * 10;
+    const shade = 128 + wobble;
+    ctx.fillStyle = `rgb(${shade}, ${shade}, ${shade})`;
+    ctx.fillRect(0, y, size, 1);
+  }
+  // faint speckle for a matte hand-finished feel
+  for (let i = 0; i < 1400; i++) {
+    const x = Math.random() * size;
+    const y = Math.random() * size;
+    const v = 128 + (Math.random() - 0.5) * 40;
+    ctx.fillStyle = `rgb(${v}, ${v}, ${v})`;
+    ctx.fillRect(x, y, 1, 1);
+  }
+  clayBumpTexture = new THREE.CanvasTexture(c);
+  clayBumpTexture.wrapS = THREE.RepeatWrapping;
+  clayBumpTexture.wrapT = THREE.RepeatWrapping;
+  clayBumpTexture.repeat.set(3, 3);
+  return clayBumpTexture;
+}
+
 export function paintStroke(
   canvases: PaintCanvases,
   uv: THREE.Vector2,
@@ -85,6 +118,7 @@ export default function PaintablePart({ geometry }: Props) {
     return tex;
   }, [canvases]);
   const ormTexture = useMemo(() => new THREE.CanvasTexture(canvases.orm), [canvases]);
+  const bumpTexture = useMemo(() => getClayBump(), []);
 
   return (
     <mesh
@@ -108,6 +142,8 @@ export default function PaintablePart({ geometry }: Props) {
         map={albedoTexture}
         roughnessMap={ormTexture}
         metalnessMap={ormTexture}
+        bumpMap={bumpTexture}
+        bumpScale={0.012}
         roughness={1}
         metalness={1}
       />
