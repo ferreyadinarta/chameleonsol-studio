@@ -54,6 +54,7 @@ export default function BrushCursor() {
     };
   }, [visible]);
 
+  if (tool === 'eyedropper' && paintMode) return <EyedropperCursor />;
   if (!visible) return null;
 
   const diameter = sizeToDiameter(brushSize);
@@ -70,5 +71,20 @@ export default function BrushCursor() {
         borderStyle: tool === 'eraser' ? 'dashed' : 'solid',
       }}
     />
+  );
+}
+
+// Live color preview that follows the cursor while the eyedropper is active.
+function EyedropperCursor() {
+  const hover = usePaintStore((s) => s.eyedropperHover);
+  if (!hover) return null;
+  return (
+    <div
+      className="eyedropper-cursor"
+      style={{ left: hover.x, top: hover.y }}
+    >
+      <div className="eyedropper-cursor-swatch" style={{ background: hover.color }} />
+      <span className="eyedropper-cursor-hex">{hover.color.toUpperCase()}</span>
+    </div>
   );
 }

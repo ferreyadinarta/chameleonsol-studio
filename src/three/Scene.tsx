@@ -3,6 +3,7 @@ import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Environment, ContactShadows } from '@react-three/drei';
 import CharacterView from './CharacterView';
 import PaintController from './PaintController';
+import PaintBlobs from './PaintBlobs';
 import { usePaintStore } from '../store/usePaintStore';
 
 function CamoSurface({
@@ -68,6 +69,7 @@ export default function Scene({ captureRef }: Props) {
       <ContactShadows position={[0, 0, 0]} opacity={0.4} scale={4} blur={2} far={2} />
 
       <PaintController />
+      <PaintBlobs />
 
       <OrbitControls
         makeDefault

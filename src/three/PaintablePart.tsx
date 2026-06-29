@@ -38,6 +38,46 @@ function makeCanvases(): PaintCanvases {
 
 export const paintableMeshes = new Set<THREE.Mesh>();
 
+// Make an arbitrary (e.g. loaded GLB) mesh paintable: give it its own clay
+// paint canvas, swap in a paint material, and register it for raycasting.
+// Returns a cleanup that unregisters + disposes.
+export function attachPaintToMesh(mesh: THREE.Mesh): () => void {
+  const canvases = makeCanvases();
+  const albedoTexture = new THREE.CanvasTexture(canvases.albedo);
+  albedoTexture.colorSpace = THREE.SRGBColorSpace;
+  const ormTexture = new THREE.CanvasTexture(canvases.orm);
+
+  // Keep flipY at its default (true) so paint lands where the cursor is:
+  // paintStroke writes at canvas y = (1 - uv.y), which a flipY=true texture
+  // samples back to the same uv — matching the procedural parts.
+
+  const material = new THREE.MeshStandardMaterial({
+    map: albedoTexture,
+    roughnessMap: ormTexture,
+    metalnessMap: ormTexture,
+    bumpMap: getClayBump(),
+    bumpScale: 0.01,
+    roughness: 1,
+    metalness: 1,
+  });
+
+  const prevMaterial = mesh.material;
+  mesh.material = material;
+  mesh.userData.canvases = canvases;
+  mesh.userData.albedoTexture = albedoTexture;
+  mesh.userData.ormTexture = ormTexture;
+  mesh.userData.paintable = true;
+  paintableMeshes.add(mesh);
+
+  return () => {
+    paintableMeshes.delete(mesh);
+    mesh.material = prevMaterial;
+    material.dispose();
+    albedoTexture.dispose();
+    ormTexture.dispose();
+  };
+}
+
 // Shared striated bump map — mimics the layered, hand-sculpted clay surface
 // of the Meccha Chameleon figures. Stays under any paint the user applies.
 let clayBumpTexture: THREE.CanvasTexture | null = null;

@@ -22,6 +22,7 @@ type PaintStore = {
   metalness: number;
   roughness: number;
   palette: string[];
+  eyedropperHover: { x: number; y: number; color: string } | null;
   undoSignal: number;
   clearSignal: number;
   saveSignal: number;
@@ -33,6 +34,7 @@ type PaintStore = {
   setMetalness: (v: number) => void;
   setRoughness: (v: number) => void;
   addPaletteColor: (hex: string) => void;
+  setEyedropperHover: (v: { x: number; y: number; color: string } | null) => void;
   requestUndo: () => void;
   requestClear: () => void;
   requestSave: () => void;
@@ -46,13 +48,15 @@ export const usePaintStore = create<PaintStore>((set, get) => ({
   metalness: 0.1,
   roughness: 0.7,
   palette: loadPalette(),
+  eyedropperHover: null,
   undoSignal: 0,
   clearSignal: 0,
   saveSignal: 0,
   setPaintMode: (on) => set({ paintMode: on }),
   togglePaintMode: () => set({ paintMode: !get().paintMode }),
   setTool: (tool) => set({ tool }),
-  setColor: (hex) => set({ color: hex, tool: get().tool === 'eyedropper' ? 'brush' : get().tool }),
+  setColor: (hex) => set({ color: hex, tool: get().tool === 'eyedropper' ? 'brush' : get().tool, eyedropperHover: null }),
+  setEyedropperHover: (v) => set({ eyedropperHover: v }),
   setBrushSize: (size) => set({ brushSize: size }),
   setMetalness: (v) => set({ metalness: v }),
   setRoughness: (v) => set({ roughness: v }),

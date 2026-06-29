@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { useFrame, useThree } from '@react-three/fiber';
+import { useThree } from '@react-three/fiber';
 import { usePaintStore } from '../store/usePaintStore';
 import { paintStroke, sampleAlbedo, resetCanvases, paintableMeshes, TEX_SIZE, type PaintCanvases } from './PaintablePart';
+import { spawnPaintBlobs } from './PaintBlobs';
 
 type GestureSnapshot = Map<THREE.Mesh, { albedo: ImageData; orm: ImageData }>;
 
@@ -15,25 +16,6 @@ export default function PaintController() {
   const pointer = useRef(new THREE.Vector2());
   const undoStackRef = useRef<GestureSnapshot[]>([]);
   const currentGestureRef = useRef<GestureSnapshot | null>(null);
-
-  // Springy squish on a freshly painted part — the lively "clay" feedback.
-  useFrame((_, delta) => {
-    const dt = Math.min(delta, 0.05);
-    paintableMeshes.forEach((m) => {
-      let s = (m.userData.pulseScale as number) ?? 0;
-      let v = (m.userData.pulseVel as number) ?? 0;
-      if (s === 0 && v === 0) return;
-      v += (-220 * s - 22 * v) * dt;
-      s += v * dt;
-      if (Math.abs(s) < 0.0004 && Math.abs(v) < 0.0008) {
-        s = 0;
-        v = 0;
-      }
-      m.userData.pulseScale = s;
-      m.userData.pulseVel = v;
-      m.scale.setScalar(1 + s);
-    });
-  });
 
   useEffect(() => {
     const dom = gl.domElement;
@@ -117,17 +99,45 @@ export default function PaintController() {
       if (hit && hit.uv) {
         paintingRef.current = true;
         currentGestureRef.current = new Map();
-        applyStroke(hit.object as THREE.Mesh, hit.uv);
+        applyStroke(hit.object as THREE.Mesh, hit.uv, hit);
       }
     };
 
+    let hoverScheduled = false;
+    const sampleHover = (clientX: number, clientY: number) => {
+      const hit = castAny(clientX, clientY);
+      let hex: string | null = null;
+      if (hit) {
+        if (hit.object.userData.paintable && hit.uv) {
+          hex = sampleAlbedo(hit.object.userData.canvases as PaintCanvases, hit.uv);
+        } else if (hit.object.userData.sampleColor) {
+          hex = hit.object.userData.sampleColor();
+        }
+      }
+      usePaintStore.getState().setEyedropperHover(hex ? { x: clientX, y: clientY, color: hex } : null);
+    };
+
     const onMove = (e: PointerEvent) => {
+      const { paintMode, tool } = usePaintStore.getState();
+      if (paintMode && tool === 'eyedropper') {
+        if (!hoverScheduled) {
+          hoverScheduled = true;
+          const { clientX, clientY } = e;
+          requestAnimationFrame(() => {
+            hoverScheduled = false;
+            sampleHover(clientX, clientY);
+          });
+        }
+        return;
+      }
       if (!paintingRef.current) return;
       const hit = castPaintable(e.clientX, e.clientY);
       if (hit && hit.uv) {
-        applyStroke(hit.object as THREE.Mesh, hit.uv);
+        applyStroke(hit.object as THREE.Mesh, hit.uv, hit);
       }
     };
+
+    const onLeave = () => usePaintStore.getState().setEyedropperHover(null);
 
     const onUp = () => {
       paintingRef.current = false;
@@ -139,7 +149,7 @@ export default function PaintController() {
       }
     };
 
-    function applyStroke(mesh: THREE.Mesh, uv: THREE.Vector2) {
+    function applyStroke(mesh: THREE.Mesh, uv: THREE.Vector2, hit: THREE.Intersection) {
       const gesture = currentGestureRef.current;
       if (gesture && !gesture.has(mesh)) {
         gesture.set(mesh, snapshotMesh(mesh));
@@ -149,17 +159,29 @@ export default function PaintController() {
       paintStroke(canvases, uv, color, metalness, roughness, brushSize, tool === 'eraser');
       markDirty(mesh);
 
-      // nudge the squish spring; clamp so a long stroke stays a gentle wobble
-      const vel = ((mesh.userData.pulseVel as number) ?? 0) + 0.9;
-      mesh.userData.pulseVel = Math.min(vel, 2.4);
+      // Splatter: pop little paint blobs out of the surface (throttled).
+      if (tool !== 'eraser') {
+        const now = performance.now();
+        if (now - lastBlobAt > 90) {
+          lastBlobAt = now;
+          const normal =
+            hit.face && hit.object
+              ? hit.face.normal.clone().transformDirection((hit.object as THREE.Object3D).matrixWorld)
+              : new THREE.Vector3(0, 1, 0);
+          spawnPaintBlobs(hit.point, normal, color, brushSize);
+        }
+      }
     }
+    let lastBlobAt = 0;
 
     dom.addEventListener('pointerdown', onDown);
     dom.addEventListener('pointermove', onMove);
+    dom.addEventListener('pointerleave', onLeave);
     window.addEventListener('pointerup', onUp);
     return () => {
       dom.removeEventListener('pointerdown', onDown);
       dom.removeEventListener('pointermove', onMove);
+      dom.removeEventListener('pointerleave', onLeave);
       window.removeEventListener('pointerup', onUp);
       unsubUndo();
       unsubClear();
