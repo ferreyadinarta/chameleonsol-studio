@@ -111,6 +111,43 @@ export function getClayBump(): THREE.CanvasTexture {
   return clayBumpTexture;
 }
 
+export type PaintSnapshot = { albedo: string; orm: string }[];
+
+// Serialize every paintable mesh's canvases to PNG data URLs (insertion order).
+export function serializePaintState(): PaintSnapshot {
+  return [...paintableMeshes].map((mesh) => {
+    const c = mesh.userData.canvases as PaintCanvases;
+    return { albedo: c.albedo.toDataURL('image/png'), orm: c.orm.toDataURL('image/png') };
+  });
+}
+
+// Restore paint from a snapshot onto the current paintable meshes (same order).
+export async function restorePaintState(data: PaintSnapshot): Promise<void> {
+  const meshes = [...paintableMeshes];
+  const drawInto = (url: string, ctx: CanvasRenderingContext2D) =>
+    new Promise<void>((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        ctx.clearRect(0, 0, TEX_SIZE, TEX_SIZE);
+        ctx.drawImage(img, 0, 0, TEX_SIZE, TEX_SIZE);
+        resolve();
+      };
+      img.onerror = () => resolve();
+      img.src = url;
+    });
+
+  await Promise.all(
+    meshes.map(async (mesh, i) => {
+      const snap = data[i];
+      if (!snap) return;
+      const c = mesh.userData.canvases as PaintCanvases;
+      await Promise.all([drawInto(snap.albedo, c.albedoCtx), drawInto(snap.orm, c.ormCtx)]);
+      (mesh.userData.albedoTexture as THREE.CanvasTexture).needsUpdate = true;
+      (mesh.userData.ormTexture as THREE.CanvasTexture).needsUpdate = true;
+    }),
+  );
+}
+
 export function paintStroke(
   canvases: PaintCanvases,
   uv: THREE.Vector2,

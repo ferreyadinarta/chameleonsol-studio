@@ -7,6 +7,7 @@ type PoseStore = {
   glideAmount: number;
   wheelOpen: boolean;
   openWheel: () => void;
+  setLockedPose: (id: string) => void;
   setHover: (poseId: string | null, amount: number) => void;
   lockHovered: () => void;
   closeWheel: () => void;
@@ -19,6 +20,7 @@ export const usePoseStore = create<PoseStore>((set, get) => ({
   glideAmount: 0,
   wheelOpen: false,
   openWheel: () => set({ wheelOpen: true, hoveredPoseId: null, glideAmount: 0 }),
+  setLockedPose: (id) => set({ lockedPoseId: id, hoveredPoseId: null, glideAmount: 0 }),
   setHover: (poseId, amount) => set({ hoveredPoseId: poseId, glideAmount: amount }),
   lockHovered: () => {
     const { hoveredPoseId, lockedPoseId } = get();

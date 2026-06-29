@@ -34,6 +34,7 @@ type PaintStore = {
   setMetalness: (v: number) => void;
   setRoughness: (v: number) => void;
   addPaletteColor: (hex: string) => void;
+  setPalette: (palette: string[]) => void;
   setEyedropperHover: (v: { x: number; y: number; color: string } | null) => void;
   requestUndo: () => void;
   requestClear: () => void;
@@ -66,6 +67,10 @@ export const usePaintStore = create<PaintStore>((set, get) => ({
     const next = [hex, ...palette].slice(0, 16);
     set({ palette: next });
     localStorage.setItem(PALETTE_KEY, JSON.stringify(next));
+  },
+  setPalette: (palette) => {
+    set({ palette });
+    localStorage.setItem(PALETTE_KEY, JSON.stringify(palette));
   },
   requestUndo: () => set({ undoSignal: get().undoSignal + 1 }),
   requestClear: () => set({ clearSignal: get().clearSignal + 1 }),

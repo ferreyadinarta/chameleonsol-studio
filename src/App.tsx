@@ -2,16 +2,21 @@ import { useEffect, useRef } from 'react';
 import Scene from './three/Scene';
 import PoseWheel from './ui/PoseWheel';
 import PaintPanel from './ui/PaintPanel';
+import StagePanel from './ui/StagePanel';
+import ControlsHint from './ui/ControlsHint';
 import BrushCursor from './ui/BrushCursor';
 import ReferenceCard from './ui/ReferenceCard';
 import Gallery from './ui/Gallery';
+import SessionsPanel from './ui/SessionsPanel';
 import { usePoseStore, POSES } from './store/usePoseStore';
 import { usePaintStore } from './store/usePaintStore';
+import { useStageStore } from './store/useStageStore';
 import './studio.css';
 
 function App() {
   const captureRef = useRef<(() => string | null) | null>(null);
   const paintMode = usePaintStore((s) => s.paintMode);
+  const bgImage = useStageStore((s) => s.bgImage);
   const wheelOpen = usePoseStore((s) => s.wheelOpen);
   const lockedPoseId = usePoseStore((s) => s.lockedPoseId);
   const currentLabel = POSES.find((p) => p.id === lockedPoseId)?.label ?? '';
@@ -43,8 +48,11 @@ function App() {
       </header>
 
       <div className={paintMode ? 'studio-stage studio-stage--painting' : 'studio-stage'}>
+        {bgImage && <img id="stage-bg" className="studio-bg-image" src={bgImage} alt="" />}
         <Scene captureRef={captureRef} />
         <ReferenceCard />
+        {!wheelOpen && <StagePanel />}
+        {!wheelOpen && !paintMode && <ControlsHint />}
         <PoseWheel />
         <PaintPanel />
         <BrushCursor />
@@ -65,6 +73,7 @@ function App() {
       )}
 
       <Gallery captureRef={captureRef} />
+      <SessionsPanel captureRef={captureRef} />
     </div>
   );
 }
