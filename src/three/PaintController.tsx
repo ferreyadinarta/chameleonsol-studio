@@ -4,6 +4,10 @@ import { useThree } from '@react-three/fiber';
 import { usePaintStore } from '../store/usePaintStore';
 import { paintStroke, sampleAlbedo, resetCanvases, paintableMeshes, TEX_SIZE, type PaintCanvases } from './PaintablePart';
 import { spawnPaintBlobs } from './PaintBlobs';
+import { useStageStore } from '../store/useStageStore';
+import { ensureBgSampler, sampleBgAt } from '../utils/bgSampler';
+import { brushHover } from './brushHover';
+import { cameraRig } from './cameraRig';
 
 type GestureSnapshot = Map<THREE.Mesh, { albedo: ImageData; orm: ImageData }>;
 
@@ -78,19 +82,12 @@ export default function PaintController() {
     };
 
     const onDown = (e: PointerEvent) => {
-      if (e.button !== 0) return;
+      if (e.button !== 0 || e.shiftKey) return; // Shift+drag is reserved for camera pan
       const { paintMode, tool } = usePaintStore.getState();
       if (!paintMode) return;
 
       if (tool === 'eyedropper') {
-        const hit = castAny(e.clientX, e.clientY);
-        if (!hit) return;
-        let hex: string | null = null;
-        if (hit.object.userData.paintable && hit.uv) {
-          hex = sampleAlbedo(hit.object.userData.canvases as PaintCanvases, hit.uv);
-        } else if (hit.object.userData.sampleColor) {
-          hex = hit.object.userData.sampleColor();
-        }
+        const hex = sampleAt(e.clientX, e.clientY);
         if (hex) usePaintStore.getState().setColor(hex);
         return;
       }
@@ -104,22 +101,63 @@ export default function PaintController() {
     };
 
     let hoverScheduled = false;
-    const sampleHover = (clientX: number, clientY: number) => {
+    const sampleAt = (clientX: number, clientY: number): string | null => {
       const hit = castAny(clientX, clientY);
-      let hex: string | null = null;
       if (hit) {
         if (hit.object.userData.paintable && hit.uv) {
-          hex = sampleAlbedo(hit.object.userData.canvases as PaintCanvases, hit.uv);
-        } else if (hit.object.userData.sampleColor) {
-          hex = hit.object.userData.sampleColor();
+          return sampleAlbedo(hit.object.userData.canvases as PaintCanvases, hit.uv);
+        }
+        if (hit.object.userData.sampleColor) {
+          return hit.object.userData.sampleColor();
         }
       }
+      // missed the 3D scene — sample the uploaded background image if present
+      const bg = useStageStore.getState().bgImage;
+      if (bg) {
+        ensureBgSampler(bg);
+        return sampleBgAt(clientX, clientY, dom.getBoundingClientRect());
+      }
+      return null;
+    };
+
+    const sampleHover = (clientX: number, clientY: number) => {
+      const hex = sampleAt(clientX, clientY);
       usePaintStore.getState().setEyedropperHover(hex ? { x: clientX, y: clientY, color: hex } : null);
+    };
+
+    const setBrushHoverFromHit = (hit: THREE.Intersection) => {
+      brushHover.active = true;
+      brushHover.point.copy(hit.point);
+      if (hit.face) brushHover.normal.copy(hit.face.normal).transformDirection(hit.object.matrixWorld).normalize();
+    };
+
+    // When the cursor isn't over the figure, place the brush on a camera-facing
+    // plane at the orbit target's depth so it stays the SAME world (screen) size
+    // as when it's on the surface. Reuses the ray set by the last castPaintable.
+    const _plane = new THREE.Plane();
+    const _planeN = new THREE.Vector3();
+    const _target = new THREE.Vector3();
+    const _hitP = new THREE.Vector3();
+    const fallbackBrushHover = () => {
+      _target.set(0, 0.9, 0);
+      if (cameraRig.controls) _target.copy(cameraRig.controls.target);
+      _planeN.copy(camera.position).sub(_target).normalize();
+      _plane.setFromNormalAndCoplanarPoint(_planeN, _target);
+      const p = raycaster.current.ray.intersectPlane(_plane, _hitP);
+      if (p) {
+        brushHover.active = true;
+        brushHover.point.copy(_hitP);
+        brushHover.normal.copy(_planeN);
+      } else {
+        brushHover.active = false;
+      }
     };
 
     const onMove = (e: PointerEvent) => {
       const { paintMode, tool } = usePaintStore.getState();
-      if (paintMode && tool === 'eyedropper') {
+      if (!paintMode) return;
+
+      if (tool === 'eyedropper') {
         if (!hoverScheduled) {
           hoverScheduled = true;
           const { clientX, clientY } = e;
@@ -130,14 +168,34 @@ export default function PaintController() {
         }
         return;
       }
-      if (!paintingRef.current) return;
-      const hit = castPaintable(e.clientX, e.clientY);
-      if (hit && hit.uv) {
-        applyStroke(hit.object as THREE.Mesh, hit.uv, hit);
+
+      // Painting: paint + keep the 3D cursor on the surface.
+      if (paintingRef.current) {
+        const hit = castPaintable(e.clientX, e.clientY);
+        if (hit && hit.uv) {
+          applyStroke(hit.object as THREE.Mesh, hit.uv, hit);
+          setBrushHoverFromHit(hit);
+        }
+        return;
+      }
+
+      // Hovering with brush/eraser: position the 3D cursor (throttled).
+      if (!hoverScheduled) {
+        hoverScheduled = true;
+        const { clientX, clientY } = e;
+        requestAnimationFrame(() => {
+          hoverScheduled = false;
+          const hit = castPaintable(clientX, clientY);
+          if (hit) setBrushHoverFromHit(hit);
+          else fallbackBrushHover();
+        });
       }
     };
 
-    const onLeave = () => usePaintStore.getState().setEyedropperHover(null);
+    const onLeave = () => {
+      usePaintStore.getState().setEyedropperHover(null);
+      brushHover.active = false;
+    };
 
     const onUp = () => {
       paintingRef.current = false;

@@ -51,15 +51,9 @@ export function attachPaintToMesh(mesh: THREE.Mesh): () => void {
   // paintStroke writes at canvas y = (1 - uv.y), which a flipY=true texture
   // samples back to the same uv — matching the procedural parts.
 
-  const material = new THREE.MeshStandardMaterial({
-    map: albedoTexture,
-    roughnessMap: ormTexture,
-    metalnessMap: ormTexture,
-    bumpMap: getClayBump(),
-    bumpScale: 0.01,
-    roughness: 1,
-    metalness: 1,
-  });
+  // Unlit + tone-mapping off so painted colors render exactly as the picked
+  // hex (the renderer's tone mapping would otherwise shift them).
+  const material = new THREE.MeshBasicMaterial({ map: albedoTexture, toneMapped: false });
 
   const prevMaterial = mesh.material;
   mesh.material = material;
@@ -123,6 +117,11 @@ export function serializePaintState(): PaintSnapshot {
 
 // Restore paint from a snapshot onto the current paintable meshes (same order).
 export async function restorePaintState(data: PaintSnapshot): Promise<void> {
+  // The model may still be loading — wait until paintable meshes register so a
+  // session loaded right after page load still restores its paint.
+  for (let i = 0; i < 80 && paintableMeshes.size === 0; i++) {
+    await new Promise((r) => setTimeout(r, 50));
+  }
   const meshes = [...paintableMeshes];
   const drawInto = (url: string, ctx: CanvasRenderingContext2D) =>
     new Promise<void>((resolve) => {

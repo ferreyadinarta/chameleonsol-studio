@@ -18,6 +18,39 @@ const _tmpQ = new THREE.Quaternion();
 const _gp = new THREE.Vector3();
 const _ge = new THREE.Euler();
 
+// A thin inverted-hull outline so the (unlit, flat) figure still has a faint
+// silhouette — you can tell it's there even when painted the same color as the
+// background. Pushes the back faces out slightly along their normals.
+function makeOutlineMaterial(): THREE.MeshBasicMaterial {
+  const m = new THREE.MeshBasicMaterial({
+    color: '#2c2a26',
+    side: THREE.BackSide,
+    transparent: true,
+    opacity: 0.28,
+    toneMapped: false,
+  });
+  m.onBeforeCompile = (shader) => {
+    shader.uniforms.outlineWidth = { value: 0.012 };
+    shader.vertexShader =
+      'uniform float outlineWidth;\n' +
+      shader.vertexShader.replace(
+        '#include <begin_vertex>',
+        '#include <begin_vertex>\n  transformed += normalize(normal) * outlineWidth;',
+      );
+  };
+  return m;
+}
+
+function addOutline(mesh: THREE.SkinnedMesh): THREE.SkinnedMesh {
+  const outline = new THREE.SkinnedMesh(mesh.geometry, makeOutlineMaterial());
+  outline.bind(mesh.skeleton, mesh.bindMatrix);
+  outline.bindMode = mesh.bindMode;
+  outline.frustumCulled = false;
+  outline.renderOrder = -1;
+  mesh.add(outline);
+  return outline;
+}
+
 function lerp(a: number, b: number, t: number) {
   return a + (b - a) * t;
 }
@@ -57,12 +90,20 @@ export default function CharacterModel() {
     let rootBone: THREE.Object3D | null = null;
     const cleanups: Array<() => void> = [];
     scene.traverse((obj) => {
-      const mesh = obj as THREE.Mesh;
-      if (mesh.isMesh) {
-        mesh.castShadow = true;
-        mesh.receiveShadow = true;
+      const mesh = obj as THREE.SkinnedMesh;
+      if (mesh.isMesh && !mesh.userData.isOutline) {
+        mesh.castShadow = false;
+        mesh.receiveShadow = false;
         mesh.frustumCulled = false;
         cleanups.push(attachPaintToMesh(mesh));
+        if (mesh.isSkinnedMesh) {
+          const outline = addOutline(mesh);
+          outline.userData.isOutline = true;
+          cleanups.push(() => {
+            mesh.remove(outline);
+            (outline.material as THREE.Material).dispose();
+          });
+        }
       }
       if ((obj as THREE.Bone).isBone) {
         bones[obj.name] = obj as THREE.Bone;
