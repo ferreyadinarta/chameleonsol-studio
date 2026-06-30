@@ -3,6 +3,7 @@ import { usePoseStore } from '../store/usePoseStore';
 import { usePaintStore } from '../store/usePaintStore';
 import { useStageStore } from '../store/useStageStore';
 import { serializePaintState, restorePaintState } from '../three/PaintablePart';
+import { getCameraState, applyCameraState } from '../three/cameraRig';
 import { listSessions, saveSession, deleteSession, type SessionRecord } from '../utils/sessionsDB';
 
 type Props = {
@@ -13,6 +14,7 @@ export default function SessionsPanel({ captureRef }: Props) {
   const [open, setOpen] = useState(false);
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [busy, setBusy] = useState(false);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
 
   const refresh = () => listSessions().then(setSessions).catch(() => setSessions([]));
 
@@ -39,10 +41,12 @@ export default function SessionsPanel({ captureRef }: Props) {
           charY: stage.charY,
           charZ: stage.charZ,
           charRotY: stage.charRotY,
+          charScale: stage.charScale,
           lockedPoseId: pose.lockedPoseId,
           color: paint.color,
           palette: paint.palette,
           paint: serializePaintState(),
+          camera: getCameraState(),
         },
       };
       await saveSession(rec);
@@ -62,12 +66,16 @@ export default function SessionsPanel({ captureRef }: Props) {
         charY: d.charY,
         charZ: d.charZ,
         charRotY: d.charRotY,
+        charScale: d.charScale,
       });
       usePoseStore.getState().setLockedPose(d.lockedPoseId);
       usePaintStore.getState().setPalette(d.palette);
       usePaintStore.getState().setColor(d.color);
-      await restorePaintState(d.paint);
+      applyCameraState(d.camera);
       setOpen(false);
+      await restorePaintState(d.paint);
+    } catch (err) {
+      console.error('[Sessions] load failed', err);
     } finally {
       setBusy(false);
     }
@@ -75,6 +83,7 @@ export default function SessionsPanel({ captureRef }: Props) {
 
   const handleDelete = async (id: string) => {
     await deleteSession(id);
+    setConfirmId(null);
     await refresh();
   };
 
@@ -112,12 +121,25 @@ export default function SessionsPanel({ captureRef }: Props) {
                     <span className="session-date">{new Date(s.updatedAt).toLocaleString()}</span>
                   </div>
                   <div className="session-actions">
-                    <button className="stage-btn" disabled={busy} onClick={() => handleLoad(s)}>
-                      Load
-                    </button>
-                    <button className="stage-btn" onClick={() => handleDelete(s.id)}>
-                      Delete
-                    </button>
+                    {confirmId === s.id ? (
+                      <>
+                        <button className="stage-btn stage-btn--danger" onClick={() => handleDelete(s.id)}>
+                          Confirm
+                        </button>
+                        <button className="stage-btn" onClick={() => setConfirmId(null)}>
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button className="stage-btn stage-btn--primary" disabled={busy} onClick={() => handleLoad(s)}>
+                          Load
+                        </button>
+                        <button className="stage-btn" onClick={() => setConfirmId(s.id)}>
+                          Delete
+                        </button>
+                      </>
+                    )}
                   </div>
                 </div>
               ))}

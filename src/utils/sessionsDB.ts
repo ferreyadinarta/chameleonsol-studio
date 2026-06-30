@@ -1,4 +1,5 @@
 import type { PaintSnapshot } from '../three/PaintablePart';
+import type { CameraState } from '../three/cameraRig';
 
 // Saved sessions live in IndexedDB (not localStorage) because paint canvases +
 // background images are large data URLs that would blow the 5 MB localStorage cap.
@@ -9,10 +10,12 @@ export type SessionData = {
   charY: number;
   charZ: number;
   charRotY: number;
+  charScale?: number;
   lockedPoseId: string;
   color: string;
   palette: string[];
   paint: PaintSnapshot;
+  camera?: CameraState | null;
 };
 
 export type SessionRecord = {
