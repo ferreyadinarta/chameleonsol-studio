@@ -33,6 +33,78 @@ function App() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
+  // Hold Alt to temporarily switch to the eyedropper (quick color pick),
+  // like the shortcut in art tools / the game. Release returns the old tool.
+  useEffect(() => {
+    let prevTool: 'brush' | 'eraser' | 'eyedropper' | null = null;
+    const down = (e: KeyboardEvent) => {
+      if (e.key !== 'Alt' || e.repeat) return;
+      const ps = usePaintStore.getState();
+      if (!ps.paintMode || ps.tool === 'eyedropper') return;
+      e.preventDefault();
+      prevTool = ps.tool;
+      ps.setTool('eyedropper');
+    };
+    const up = (e: KeyboardEvent) => {
+      if (e.key !== 'Alt' || prevTool === null) return;
+      usePaintStore.getState().setTool(prevTool);
+      prevTool = null;
+    };
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+    };
+  }, []);
+
+  // WASD / QE move the character; held keys move continuously.
+  useEffect(() => {
+    const pressed = new Set<string>();
+    const MOVE = new Set(['w', 'a', 's', 'd', 'q', 'e']);
+    const typing = () => {
+      const a = document.activeElement;
+      return !!a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA');
+    };
+    const onDown = (e: KeyboardEvent) => {
+      const k = e.key.toLowerCase();
+      if (!MOVE.has(k) || typing()) return;
+      pressed.add(k);
+    };
+    const onUp = (e: KeyboardEvent) => pressed.delete(e.key.toLowerCase());
+    const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+
+    let raf = 0;
+    let last = performance.now();
+    const loop = (t: number) => {
+      const dt = Math.min(0.05, (t - last) / 1000);
+      last = t;
+      if (pressed.size && !usePoseStore.getState().wheelOpen) {
+        const s = useStageStore.getState();
+        const v = 2.4 * dt;
+        let { charX, charY, charZ } = s;
+        if (pressed.has('a')) charX -= v;
+        if (pressed.has('d')) charX += v;
+        if (pressed.has('w')) charY += v;
+        if (pressed.has('s')) charY -= v;
+        if (pressed.has('q')) charZ -= v;
+        if (pressed.has('e')) charZ += v;
+        s.setCharX(clamp(charX, -6, 6));
+        s.setCharY(clamp(charY, -4, 5));
+        s.setCharZ(clamp(charZ, -6, 6));
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    window.addEventListener('keydown', onDown);
+    window.addEventListener('keyup', onUp);
+    return () => {
+      cancelAnimationFrame(raf);
+      window.removeEventListener('keydown', onDown);
+      window.removeEventListener('keyup', onUp);
+    };
+  }, []);
+
   return (
     <div className="studio-root">
       <header className="studio-header">
@@ -62,7 +134,7 @@ function App() {
         <div className={paintMode ? 'studio-bottom-hint studio-bottom-hint--paint' : 'studio-bottom-hint'}>
           {paintMode ? (
             <>
-              Hold <kbd>R</kbd> — Pose Wheel &nbsp;·&nbsp; Press <kbd>F</kbd> — Back to Normal View
+              Hold <kbd>R</kbd> — Pose Wheel &nbsp;·&nbsp; Press <kbd>F</kbd> — Normal View &nbsp;·&nbsp; Hold <kbd>Alt</kbd> — Pick Color
             </>
           ) : (
             <>
