@@ -21,6 +21,25 @@ type StageStore = {
   ) => void;
 };
 
+// Movement limits so the character can't slide through the floor or behind the
+// backdrop. With the default 3D walls the box hugs the room (in front of the
+// back wall at z = -1.4, feet on the floor at y = 0). With an uploaded image
+// the limits relax since the picture is a flat backdrop the figure can't clip.
+const BACK_WALL_Z = -1.4; // matches the CamoSurface back wall in Scene
+const BACK_HALF_DEPTH = 0.19; // character's back extent at scale 1 (measured)
+
+const BOUNDS = {
+  walls: { x: [-2.6, 2.6], y: [0, 2.6] },
+  image: { x: [-4.5, 4.5], y: [-3.5, 4] },
+};
+const cl = (v: number, [lo, hi]: number[]) => Math.min(hi, Math.max(lo, v));
+const xy = (bg: string | null) => (bg ? BOUNDS.image : BOUNDS.walls);
+
+// Depth limits: with walls, the back sits flush against the wall (scale-aware)
+// and can't come past the camera; with an image, looser.
+const zBound = (bg: string | null, scale: number): [number, number] =>
+  bg ? [-4.5, 3] : [BACK_WALL_Z + BACK_HALF_DEPTH * scale, 2.8];
+
 export const useStageStore = create<StageStore>((set, get) => ({
   bgImage: null,
   charX: 0,
@@ -28,21 +47,33 @@ export const useStageStore = create<StageStore>((set, get) => ({
   charZ: 0,
   charRotY: 0,
   charScale: 1,
-  setBgImage: (url) => set({ bgImage: url }),
-  setCharX: (v) => set({ charX: v }),
-  setCharY: (v) => set({ charY: v }),
-  setCharZ: (v) => set({ charZ: v }),
+  setBgImage: (url) => {
+    const b = xy(url);
+    set((s) => ({
+      bgImage: url,
+      charX: cl(s.charX, b.x),
+      charY: cl(s.charY, b.y),
+      charZ: cl(s.charZ, zBound(url, s.charScale)),
+    }));
+  },
+  setCharX: (v) => set({ charX: cl(v, xy(get().bgImage).x) }),
+  setCharY: (v) => set({ charY: cl(v, xy(get().bgImage).y) }),
+  setCharZ: (v) => set({ charZ: cl(v, zBound(get().bgImage, get().charScale)) }),
   setCharRotY: (v) => set({ charRotY: v }),
-  setCharScale: (v) => set({ charScale: v }),
+  setCharScale: (v) =>
+    set((s) => ({ charScale: v, charZ: cl(s.charZ, zBound(s.bgImage, v)) })),
   nudgeRotY: (delta) => set({ charRotY: get().charRotY + delta }),
   resetTransform: () => set({ charX: 0, charY: 0, charZ: 0, charRotY: 0, charScale: 1 }),
-  loadStage: (s) =>
+  loadStage: (s) => {
+    const b = xy(s.bgImage ?? null);
+    const scale = s.charScale ?? 1;
     set({
       bgImage: s.bgImage ?? null,
-      charX: s.charX ?? 0,
-      charY: s.charY ?? 0,
-      charZ: s.charZ ?? 0,
+      charX: cl(s.charX ?? 0, b.x),
+      charY: cl(s.charY ?? 0, b.y),
+      charZ: cl(s.charZ ?? 0, zBound(s.bgImage ?? null, scale)),
       charRotY: s.charRotY ?? 0,
-      charScale: s.charScale ?? 1,
-    }),
+      charScale: scale,
+    });
+  },
 }));

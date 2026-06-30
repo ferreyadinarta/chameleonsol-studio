@@ -72,7 +72,6 @@ function App() {
       pressed.add(k);
     };
     const onUp = (e: KeyboardEvent) => pressed.delete(e.key.toLowerCase());
-    const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
 
     let raf = 0;
     let last = performance.now();
@@ -82,16 +81,13 @@ function App() {
       if (pressed.size && !usePoseStore.getState().wheelOpen) {
         const s = useStageStore.getState();
         const v = 2.4 * dt;
-        let { charX, charY, charZ } = s;
-        if (pressed.has('a')) charX -= v;
-        if (pressed.has('d')) charX += v;
-        if (pressed.has('w')) charY += v;
-        if (pressed.has('s')) charY -= v;
-        if (pressed.has('q')) charZ -= v;
-        if (pressed.has('e')) charZ += v;
-        s.setCharX(clamp(charX, -6, 6));
-        s.setCharY(clamp(charY, -4, 5));
-        s.setCharZ(clamp(charZ, -6, 6));
+        // setters clamp to the stage bounds (floor / backdrop)
+        if (pressed.has('a')) s.setCharX(s.charX - v);
+        if (pressed.has('d')) s.setCharX(s.charX + v);
+        if (pressed.has('w')) s.setCharY(s.charY + v);
+        if (pressed.has('s')) s.setCharY(s.charY - v);
+        if (pressed.has('q')) s.setCharZ(s.charZ - v);
+        if (pressed.has('e')) s.setCharZ(s.charZ + v);
       }
       raf = requestAnimationFrame(loop);
     };
