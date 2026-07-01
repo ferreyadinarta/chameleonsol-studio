@@ -33,22 +33,29 @@ function App() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  // Hold Alt to temporarily switch to the eyedropper (quick color pick),
-  // like the shortcut in art tools / the game. Release returns the old tool.
+  // Hold Alt to temporarily switch to the eyedropper (quick color pick), and
+  // hold Ctrl to temporarily switch to the eraser — like the shortcuts in art
+  // tools / the game. Releasing either returns the tool you were using.
   useEffect(() => {
     let prevTool: 'brush' | 'eraser' | 'eyedropper' | null = null;
+    let heldKey: 'Alt' | 'Control' | null = null;
     const down = (e: KeyboardEvent) => {
-      if (e.key !== 'Alt' || e.repeat) return;
+      if (e.repeat || heldKey) return;
+      const target: 'eyedropper' | 'eraser' | null =
+        e.key === 'Alt' ? 'eyedropper' : e.key === 'Control' ? 'eraser' : null;
+      if (!target) return;
       const ps = usePaintStore.getState();
-      if (!ps.paintMode || ps.tool === 'eyedropper') return;
+      if (!ps.paintMode || ps.tool === target) return;
       e.preventDefault();
+      heldKey = e.key as 'Alt' | 'Control';
       prevTool = ps.tool;
-      ps.setTool('eyedropper');
+      ps.setTool(target);
     };
     const up = (e: KeyboardEvent) => {
-      if (e.key !== 'Alt' || prevTool === null) return;
+      if (e.key !== heldKey || prevTool === null) return;
       usePaintStore.getState().setTool(prevTool);
       prevTool = null;
+      heldKey = null;
     };
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
@@ -58,10 +65,11 @@ function App() {
     };
   }, []);
 
-  // WASD / QE move the character; held keys move continuously.
+  // WASD move the character, Z/X move it near/far, Q/E rotate it (turntable).
+  // Held keys act continuously.
   useEffect(() => {
     const pressed = new Set<string>();
-    const MOVE = new Set(['w', 'a', 's', 'd', 'q', 'e']);
+    const MOVE = new Set(['w', 'a', 's', 'd', 'q', 'e', 'z', 'x']);
     const typing = () => {
       const a = document.activeElement;
       return !!a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA');
@@ -86,8 +94,10 @@ function App() {
         if (pressed.has('d')) s.setCharX(s.charX + v);
         if (pressed.has('w')) s.setCharY(s.charY + v);
         if (pressed.has('s')) s.setCharY(s.charY - v);
-        if (pressed.has('q')) s.setCharZ(s.charZ - v);
-        if (pressed.has('e')) s.setCharZ(s.charZ + v);
+        if (pressed.has('z')) s.setCharZ(s.charZ - v);
+        if (pressed.has('x')) s.setCharZ(s.charZ + v);
+        if (pressed.has('q')) s.nudgeRotY(-1.6 * dt);
+        if (pressed.has('e')) s.nudgeRotY(1.6 * dt);
       }
       raf = requestAnimationFrame(loop);
     };
@@ -120,7 +130,7 @@ function App() {
         <Scene captureRef={captureRef} />
         <ReferenceCard />
         {!wheelOpen && <StagePanel />}
-        {!wheelOpen && !paintMode && <ControlsHint />}
+        {!wheelOpen && <ControlsHint />}
         <PoseWheel />
         <PaintPanel />
         <BrushCursor />
@@ -130,7 +140,7 @@ function App() {
         <div className={paintMode ? 'studio-bottom-hint studio-bottom-hint--paint' : 'studio-bottom-hint'}>
           {paintMode ? (
             <>
-              Hold <kbd>R</kbd> — Pose Wheel &nbsp;·&nbsp; Press <kbd>F</kbd> — Normal View &nbsp;·&nbsp; Hold <kbd>Alt</kbd> — Pick Color
+              Hold <kbd>R</kbd> — Pose Wheel &nbsp;·&nbsp; Press <kbd>F</kbd> — Normal View
             </>
           ) : (
             <>
@@ -140,8 +150,10 @@ function App() {
         </div>
       )}
 
-      <Gallery captureRef={captureRef} />
-      <SessionsPanel captureRef={captureRef} />
+      <div className="project-bar">
+        <Gallery captureRef={captureRef} />
+        <SessionsPanel captureRef={captureRef} />
+      </div>
     </div>
   );
 }

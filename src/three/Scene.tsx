@@ -1,14 +1,13 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { OrbitControls, Environment } from '@react-three/drei';
+import { OrbitControls } from '@react-three/drei';
 import CharacterView from './CharacterView';
 import PaintController from './PaintController';
 import PaintBlobs from './PaintBlobs';
 import { brushHover } from './brushHover';
 import { cameraRig } from './cameraRig';
 import { usePaintStore } from '../store/usePaintStore';
-import { usePoseStore } from '../store/usePoseStore';
 import { useStageStore } from '../store/useStageStore';
 
 // 3D brush cursor — ring + crosshair that sits ON the surface and tilts to the
@@ -17,10 +16,12 @@ import { useStageStore } from '../store/useStageStore';
 // you're over the figure or off it.
 function BrushDecal() {
   const ref = useRef<THREE.Group>(null);
+  const crossRef = useRef<THREE.Group>(null);
+  // Brush = white ring + upright crosshair. Eraser = amber ring + an X mark,
+  // so the two tools are unmistakable at a glance, not just by color.
   const light = useMemo(
     () =>
       new THREE.MeshBasicMaterial({
-        color: '#ffffff',
         transparent: true,
         opacity: 0.95,
         side: THREE.DoubleSide,
@@ -50,7 +51,8 @@ function BrushDecal() {
     const g = ref.current;
     if (!g) return;
     const ps = usePaintStore.getState();
-    const show = ps.paintMode && (ps.tool === 'brush' || ps.tool === 'eraser') && brushHover.active;
+    const isEraser = ps.tool === 'eraser';
+    const show = ps.paintMode && (ps.tool === 'brush' || isEraser) && brushHover.active;
     g.visible = show;
     if (!show) return;
     g.position.copy(brushHover.point).addScaledVector(brushHover.normal, 0.008);
@@ -58,30 +60,35 @@ function BrushDecal() {
     g.quaternion.copy(q.current);
     const r = 0.06 + ps.brushSize * 0.6;
     g.scale.set(r, r, r);
+    light.color.set(isEraser ? '#e8913a' : '#ffffff');
+    if (crossRef.current) crossRef.current.rotation.z = isEraser ? Math.PI / 4 : 0;
   });
 
   return (
     <group ref={ref} visible={false}>
-      {/* dark outline layer */}
+      {/* rings are rotationally symmetric, so they don't need to be in the
+          rotating crosshair group */}
       <mesh material={dark} renderOrder={998}>
         <ringGeometry args={[0.8, 1.06, 48]} />
       </mesh>
-      <mesh material={dark} renderOrder={998}>
-        <planeGeometry args={[1.9, 0.11]} />
-      </mesh>
-      <mesh material={dark} renderOrder={998}>
-        <planeGeometry args={[0.11, 1.9]} />
-      </mesh>
-      {/* white core layer */}
       <mesh material={light} renderOrder={999}>
         <ringGeometry args={[0.85, 1.0, 48]} />
       </mesh>
-      <mesh material={light} renderOrder={999}>
-        <planeGeometry args={[1.74, 0.05]} />
-      </mesh>
-      <mesh material={light} renderOrder={999}>
-        <planeGeometry args={[0.05, 1.74]} />
-      </mesh>
+      {/* crosshair: a "+" for brush, rotated to an "×" for eraser */}
+      <group ref={crossRef}>
+        <mesh material={dark} renderOrder={998}>
+          <planeGeometry args={[1.9, 0.11]} />
+        </mesh>
+        <mesh material={dark} renderOrder={998}>
+          <planeGeometry args={[0.11, 1.9]} />
+        </mesh>
+        <mesh material={light} renderOrder={999}>
+          <planeGeometry args={[1.74, 0.05]} />
+        </mesh>
+        <mesh material={light} renderOrder={999}>
+          <planeGeometry args={[0.05, 1.74]} />
+        </mesh>
+      </group>
     </group>
   );
 }
@@ -160,83 +167,36 @@ function CameraSync() {
   return null;
 }
 
-// Left-drag spins the character (turntable). Shift + left-drag pans the camera
-// on the X/Y screen axes — an easy pan that doesn't need a middle mouse button.
-function TurntableDrag() {
-  const { gl, camera } = useThree();
-  useEffect(() => {
-    const dom = gl.domElement;
-    let dragging = false;
-    let panning = false;
-    let lastX = 0;
-    let lastY = 0;
-    const right = new THREE.Vector3();
-    const upv = new THREE.Vector3();
-    const move3 = new THREE.Vector3();
-
-    const panCamera = (dx: number, dy: number) => {
-      const ctrls = cameraRig.controls;
-      if (!ctrls) return;
-      const cam = ctrls.object as THREE.PerspectiveCamera;
-      const dist = cam.position.distanceTo(ctrls.target);
-      const viewH = 2 * dist * Math.tan(((cam.fov ?? 36) / 2) * (Math.PI / 180));
-      const k = viewH / dom.clientHeight;
-      right.setFromMatrixColumn(cam.matrix, 0);
-      upv.setFromMatrixColumn(cam.matrix, 1);
-      move3.copy(right).multiplyScalar(-dx * k).addScaledVector(upv, dy * k);
-      cam.position.add(move3);
-      ctrls.target.add(move3);
-      ctrls.update();
-    };
-
-    const down = (e: PointerEvent) => {
-      if (e.button !== 0) return;
-      if (usePoseStore.getState().wheelOpen) return;
-      // Shift+drag pans the camera in any mode (even while painting).
-      if (e.shiftKey) {
-        dragging = true;
-        panning = true;
-        lastX = e.clientX;
-        lastY = e.clientY;
-        return;
-      }
-      if (usePaintStore.getState().paintMode) return; // paint owns plain left-drag
-      dragging = true;
-      panning = false;
-      lastX = e.clientX;
-      lastY = e.clientY;
-    };
-    const move = (e: PointerEvent) => {
-      if (!dragging) return;
-      const dx = e.clientX - lastX;
-      const dy = e.clientY - lastY;
-      lastX = e.clientX;
-      lastY = e.clientY;
-      if (panning) panCamera(dx, dy);
-      else useStageStore.getState().nudgeRotY(dx * 0.01);
-    };
-    const up = () => {
-      dragging = false;
-      panning = false;
-    };
-    dom.addEventListener('pointerdown', down);
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
-    return () => {
-      dom.removeEventListener('pointerdown', down);
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
-    };
-  }, [gl, camera]);
-  return null;
-}
-
 type Props = {
   captureRef: { current: (() => string | null) | null };
 };
 
 export default function Scene({ captureRef }: Props) {
   const bgImage = useStageStore((s) => s.bgImage);
+  const paintMode = usePaintStore((s) => s.paintMode);
+
+  // Hold Space to pan — the same convention as Figma/Photoshop/Illustrator,
+  // which reads more natural than a Shift-modifier or middle-click (not every
+  // mouse/trackpad has a reliable middle button).
+  const [spaceDown, setSpaceDown] = useState(false);
+  useEffect(() => {
+    const typing = () => {
+      const a = document.activeElement;
+      return !!a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA');
+    };
+    const down = (e: KeyboardEvent) => {
+      if (e.code !== 'Space' || typing()) return;
+      e.preventDefault(); // stop the page from scrolling
+      setSpaceDown(true);
+    };
+    const up = (e: KeyboardEvent) => e.code === 'Space' && setSpaceDown(false);
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+    };
+  }, []);
 
   return (
     <Canvas
@@ -266,9 +226,11 @@ export default function Scene({ captureRef }: Props) {
       }}
     >
       {!bgImage && <color attach="background" args={['#e9e4d8']} />}
-      <ambientLight intensity={0.85} />
-      <directionalLight position={[2.5, 4, 2]} intensity={0.9} />
-      <Environment preset="city" />
+      {/* Ambient dominates so painted colors stay close to their exact hex;
+          the soft directional light (no shadow map) only adds a whisper of
+          gradient across the form so the 3D shape still reads up close. */}
+      <ambientLight intensity={2.4} />
+      <directionalLight position={[2, 3.2, 2.6]} intensity={0.7} />
 
       {!bgImage && (
         <>
@@ -282,7 +244,6 @@ export default function Scene({ captureRef }: Props) {
       <PaintController />
       <PaintBlobs />
       <BrushDecal />
-      <TurntableDrag />
       <CameraSync />
 
       <OrbitControls
@@ -300,11 +261,40 @@ export default function Scene({ captureRef }: Props) {
         minPolarAngle={0.15}
         maxPolarAngle={Math.PI * 0.85}
         mouseButtons={{
-          LEFT: -1 as unknown as THREE.MOUSE,
+          // Drag orbits the camera — the single primary gesture. In paint
+          // mode, left-drag paints instead, so right-drag orbits there.
+          // Hold Space to pan (Figma/Photoshop convention); middle-drag still
+          // pans too as a bonus for anyone with a 3-button mouse.
+          LEFT: (spaceDown ? THREE.MOUSE.PAN : paintMode ? -1 : THREE.MOUSE.ROTATE) as THREE.MOUSE,
           MIDDLE: THREE.MOUSE.PAN,
           RIGHT: THREE.MOUSE.ROTATE,
         }}
       />
+      <GrabCursor active={spaceDown} />
     </Canvas>
   );
+}
+
+// Swaps the canvas cursor to an open/closed hand while Space is held, so
+// panning has the same visual feedback users expect from design tools.
+function GrabCursor({ active }: { active: boolean }) {
+  const { gl } = useThree();
+  useEffect(() => {
+    const dom = gl.domElement;
+    if (!active) {
+      dom.style.cursor = '';
+      return;
+    }
+    dom.style.cursor = 'grab';
+    const down = () => (dom.style.cursor = 'grabbing');
+    const up = () => (dom.style.cursor = 'grab');
+    dom.addEventListener('pointerdown', down);
+    window.addEventListener('pointerup', up);
+    return () => {
+      dom.style.cursor = '';
+      dom.removeEventListener('pointerdown', down);
+      window.removeEventListener('pointerup', up);
+    };
+  }, [active, gl]);
+  return null;
 }

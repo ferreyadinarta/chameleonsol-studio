@@ -23,6 +23,20 @@ export default function PaintController() {
 
   useEffect(() => {
     const dom = gl.domElement;
+    let lastPaintX = 0;
+    let lastPaintY = 0;
+
+    // Space is reserved for camera pan (matches Scene's OrbitControls
+    // mapping) — tracked locally so paint never fights the pan drag.
+    let spaceDown = false;
+    const spaceKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space') spaceDown = true;
+    };
+    const spaceKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') spaceDown = false;
+    };
+    window.addEventListener('keydown', spaceKeyDown);
+    window.addEventListener('keyup', spaceKeyUp);
 
     const markDirty = (mesh: THREE.Mesh) => {
       (mesh.userData.albedoTexture as THREE.CanvasTexture).needsUpdate = true;
@@ -82,7 +96,7 @@ export default function PaintController() {
     };
 
     const onDown = (e: PointerEvent) => {
-      if (e.button !== 0 || e.shiftKey) return; // Shift+drag is reserved for camera pan
+      if (e.button !== 0 || spaceDown) return; // Space+drag is reserved for camera pan
       const { paintMode, tool } = usePaintStore.getState();
       if (!paintMode) return;
 
@@ -96,6 +110,8 @@ export default function PaintController() {
       if (hit && hit.uv) {
         paintingRef.current = true;
         currentGestureRef.current = new Map();
+        lastPaintX = e.clientX;
+        lastPaintY = e.clientY;
         applyStroke(hit.object as THREE.Mesh, hit.uv, hit);
       }
     };
@@ -169,13 +185,34 @@ export default function PaintController() {
         return;
       }
 
-      // Painting: paint + keep the 3D cursor on the surface.
+      // Painting: paint along the actual path (using the browser's coalesced
+      // events + screen-space interpolation) instead of only the point where
+      // this event landed — a fast swipe otherwise leaves gaps and feels like
+      // it "missed" where the cursor was.
       if (paintingRef.current) {
-        const hit = castPaintable(e.clientX, e.clientY);
-        if (hit && hit.uv) {
-          applyStroke(hit.object as THREE.Mesh, hit.uv, hit);
-          setBrushHoverFromHit(hit);
+        const events =
+          typeof e.getCoalescedEvents === 'function' && e.getCoalescedEvents().length
+            ? e.getCoalescedEvents()
+            : [e];
+        let lastHit: THREE.Intersection | null = null;
+        for (const ev of events) {
+          const dx = ev.clientX - lastPaintX;
+          const dy = ev.clientY - lastPaintY;
+          const dist = Math.hypot(dx, dy);
+          const steps = Math.min(8, Math.max(1, Math.round(dist / 10)));
+          for (let i = 1; i <= steps; i++) {
+            const x = lastPaintX + (dx * i) / steps;
+            const y = lastPaintY + (dy * i) / steps;
+            const hit = castPaintable(x, y);
+            if (hit && hit.uv) {
+              applyStroke(hit.object as THREE.Mesh, hit.uv, hit);
+              lastHit = hit;
+            }
+          }
+          lastPaintX = ev.clientX;
+          lastPaintY = ev.clientY;
         }
+        if (lastHit) setBrushHoverFromHit(lastHit);
         return;
       }
 
@@ -241,6 +278,8 @@ export default function PaintController() {
       dom.removeEventListener('pointermove', onMove);
       dom.removeEventListener('pointerleave', onLeave);
       window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('keydown', spaceKeyDown);
+      window.removeEventListener('keyup', spaceKeyUp);
       unsubUndo();
       unsubClear();
     };

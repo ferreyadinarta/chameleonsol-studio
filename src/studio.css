@@ -87,19 +87,14 @@ body,
 }
 
 .sessions-open-btn {
-  position: absolute;
-  left: 24px;
-  bottom: 70px;
-  z-index: 20;
   padding: 8px 16px;
   border-radius: 999px;
   border: 1px solid var(--line);
   background: var(--panel);
   color: var(--ink);
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 700;
   cursor: pointer;
-  box-shadow: 0 4px 14px rgba(44, 42, 38, 0.12);
 }
 
 .sessions-modal {
@@ -491,15 +486,30 @@ body,
 
 .eyedropper-cursor {
   position: fixed;
-  transform: translate(14px, -50%);
+  transform: translate(-50%, -50%);
   pointer-events: none;
   z-index: 40;
+}
+
+.eyedropper-crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.eyedropper-cursor-pill {
+  position: absolute;
+  left: 22px;
+  top: 50%;
+  transform: translateY(-50%);
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 3px 8px 3px 4px;
   background: rgba(28, 26, 22, 0.82);
   border-radius: 999px;
+  white-space: nowrap;
 }
 
 .eyedropper-cursor-swatch {
@@ -937,15 +947,22 @@ body,
 
 /* Gallery */
 
-.gallery {
+/* one tidy cluster of project actions, bottom-left */
+.project-bar {
   position: absolute;
   left: 16px;
   bottom: 16px;
   z-index: 25;
   display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 8px;
-  align-items: flex-start;
+}
+
+.gallery {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .gallery-actions {
@@ -971,6 +988,9 @@ body,
 }
 
 .gallery-grid {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 10px);
   display: grid;
   grid-template-columns: repeat(6, 56px);
   gap: 6px;
@@ -981,6 +1001,7 @@ body,
   max-width: 380px;
   max-height: 220px;
   overflow-y: auto;
+  box-shadow: 0 8px 24px rgba(44, 42, 38, 0.14);
 }
 
 .gallery-empty {

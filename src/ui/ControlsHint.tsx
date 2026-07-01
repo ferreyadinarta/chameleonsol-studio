@@ -1,61 +1,18 @@
-import { useState } from "react";
+import { useState } from 'react';
+import { usePaintStore } from '../store/usePaintStore';
 
-type Active = "left" | "right" | "middle" | "scroll";
+type Active = 'left' | 'right' | 'middle' | 'scroll';
 
 function MouseIcon({ active }: { active: Active }) {
   return (
-    <svg
-      className="ctrl-mouse"
-      width="24"
-      height="32"
-      viewBox="0 0 24 32"
-      fill="none"
-      aria-hidden
-    >
-      <rect
-        x="2"
-        y="2"
-        width="20"
-        height="28"
-        rx="10"
-        stroke="currentColor"
-        strokeWidth="1.5"
-      />
-      <line
-        x1="12"
-        y1="3"
-        x2="12"
-        y2="13"
-        stroke="currentColor"
-        strokeWidth="1"
-      />
-      <line
-        x1="2.5"
-        y1="13"
-        x2="21.5"
-        y2="13"
-        stroke="currentColor"
-        strokeWidth="1"
-      />
-      {active === "left" && (
-        <path d="M12 3 H7 A9 9 0 0 0 2.6 12.5 H12 Z" className="ctrl-fill" />
-      )}
-      {active === "right" && (
-        <path d="M12 3 H17 A9 9 0 0 1 21.4 12.5 H12 Z" className="ctrl-fill" />
-      )}
-      {active === "middle" && (
-        <rect
-          x="10.5"
-          y="5"
-          width="3"
-          height="8"
-          rx="1.5"
-          className="ctrl-fill"
-        />
-      )}
-      {active === "scroll" && (
-        <rect x="10" y="6" width="4" height="7" rx="2" className="ctrl-fill" />
-      )}
+    <svg className="ctrl-mouse" width="24" height="32" viewBox="0 0 24 32" fill="none" aria-hidden>
+      <rect x="2" y="2" width="20" height="28" rx="10" stroke="currentColor" strokeWidth="1.5" />
+      <line x1="12" y1="3" x2="12" y2="13" stroke="currentColor" strokeWidth="1" />
+      <line x1="2.5" y1="13" x2="21.5" y2="13" stroke="currentColor" strokeWidth="1" />
+      {active === 'left' && <path d="M12 3 H7 A9 9 0 0 0 2.6 12.5 H12 Z" className="ctrl-fill" />}
+      {active === 'right' && <path d="M12 3 H17 A9 9 0 0 1 21.4 12.5 H12 Z" className="ctrl-fill" />}
+      {active === 'middle' && <rect x="10.5" y="5" width="3" height="8" rx="1.5" className="ctrl-fill" />}
+      {active === 'scroll' && <rect x="10" y="6" width="4" height="7" rx="2" className="ctrl-fill" />}
     </svg>
   );
 }
@@ -66,45 +23,58 @@ function Key({ children }: { children: string }) {
 
 export default function ControlsHint() {
   const [open, setOpen] = useState(true);
+  const paintMode = usePaintStore((s) => s.paintMode);
 
   return (
-    <div
-      className={open ? "controls-hint" : "controls-hint controls-hint--closed"}
-    >
-      <button
-        className="controls-hint-toggle"
-        onClick={() => setOpen((o) => !o)}
-        title="Controls"
-      >
-        {open ? "✕" : "?"}
+    <div className={open ? 'controls-hint' : 'controls-hint controls-hint--closed'}>
+      <button className="controls-hint-toggle" onClick={() => setOpen((o) => !o)} title="Controls">
+        {open ? '✕' : '?'}
       </button>
       {open && (
         <div className="controls-hint-rows">
           <div className="controls-hint-row">
             <MouseIcon active="left" />
             <span>
-              <strong>Drag</strong> — Rotate figure
+              <strong>Drag</strong> — {paintMode ? 'Paint' : 'Orbit camera'}
             </span>
           </div>
-          <div className="controls-hint-row">
-            <MouseIcon active="right" />
-            <span>
-              <strong>Right + Drag</strong> — Camera angle
+          {paintMode && (
+            <div className="controls-hint-row">
+              <MouseIcon active="right" />
+              <span>
+                <strong>Right-drag</strong> — Orbit camera
+              </span>
+            </div>
+          )}
+          <div className="controls-hint-row controls-hint-row--keys">
+            <span className="ctrl-keys">
+              <Key>Space</Key>
             </span>
-          </div>
-          <div className="controls-hint-row">
-            <MouseIcon active="left" />
-            <span>
-              <strong>Shift + Drag</strong> — Pan view
-            </span>
+            <span>+ drag — Pan view</span>
           </div>
           <div className="controls-hint-row">
             <MouseIcon active="scroll" />
             <span>
-              <strong>Scroll</strong> — Zoom (whole scene)
+              <strong>Scroll</strong> — Zoom
             </span>
           </div>
           <div className="controls-hint-divider" />
+          {paintMode && (
+            <>
+              <div className="controls-hint-row controls-hint-row--keys">
+                <span className="ctrl-keys">
+                  <Key>Alt</Key>
+                </span>
+                <span>Hold — Pick color</span>
+              </div>
+              <div className="controls-hint-row controls-hint-row--keys">
+                <span className="ctrl-keys">
+                  <Key>Ctrl</Key>
+                </span>
+                <span>Hold — Eraser</span>
+              </div>
+            </>
+          )}
           <div className="controls-hint-row controls-hint-row--keys">
             <span className="ctrl-keys">
               <Key>W</Key>
@@ -112,14 +82,21 @@ export default function ControlsHint() {
               <Key>S</Key>
               <Key>D</Key>
             </span>
-            <span>Move figure (left, right, up, down)</span>
+            <span>Move figure</span>
+          </div>
+          <div className="controls-hint-row controls-hint-row--keys">
+            <span className="ctrl-keys">
+              <Key>Z</Key>
+              <Key>X</Key>
+            </span>
+            <span>Move near / far</span>
           </div>
           <div className="controls-hint-row controls-hint-row--keys">
             <span className="ctrl-keys">
               <Key>Q</Key>
               <Key>E</Key>
             </span>
-            <span>Move figure depth (near/far)</span>
+            <span>Rotate figure</span>
           </div>
         </div>
       )}

@@ -51,9 +51,17 @@ export function attachPaintToMesh(mesh: THREE.Mesh): () => void {
   // paintStroke writes at canvas y = (1 - uv.y), which a flipY=true texture
   // samples back to the same uv — matching the procedural parts.
 
-  // Unlit + tone-mapping off so painted colors render exactly as the picked
-  // hex (the renderer's tone mapping would otherwise shift them).
-  const material = new THREE.MeshBasicMaterial({ map: albedoTexture, toneMapped: false });
+  // Lightly lit (not fully flat): a dominant ambient keeps painted colors close
+  // to their exact hex, while a soft, non-shadow-casting directional light adds
+  // just enough gradient across the form (brighter front, dimmer back/sides) so
+  // the 3D shape reads even without a visible cast shadow. Lambert (not
+  // Standard/PBR) — same diffuse-only look, cheaper per-pixel cost, no
+  // specular/IBL sampling. toneMapped: false so the tone curve doesn't shift
+  // the picked color.
+  const material = new THREE.MeshLambertMaterial({
+    map: albedoTexture,
+    toneMapped: false,
+  });
 
   const prevMaterial = mesh.material;
   mesh.material = material;
