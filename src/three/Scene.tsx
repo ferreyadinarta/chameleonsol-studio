@@ -18,6 +18,15 @@ import { useStageStore } from '../store/useStageStore';
 // value and silently erasing any pan the instant something else re-rendered.
 const ORBIT_TARGET: [number, number, number] = [0, 0.9, 0];
 
+// PhotoBoard is a flat, single-sided plane — orbiting far enough around it
+// reveals its blank backface (or an edge-on sliver at exactly 90°). Clamping
+// azimuth keeps the camera on the side that's actually showing the photo.
+// The default camera start position [3.5, ..., 5.5] sits at this azimuth
+// (three.js Spherical measures theta from +Z toward +X), so centering the
+// clamp there keeps the default view untouched.
+const BACKDROP_AZIMUTH_0 = Math.atan2(3.5, 5.5);
+const BACKDROP_ORBIT_RANGE = Math.PI / 4; // ±45°
+
 // 3D brush cursor — ring + crosshair that sits ON the surface and tilts to the
 // surface normal. White shapes with a dark outline so it's always visible
 // regardless of the paint color underneath, and a constant world size whether
@@ -250,6 +259,8 @@ export default function Scene({ captureRef }: Props) {
         panSpeed={1.1}
         minPolarAngle={0.15}
         maxPolarAngle={Math.PI * 0.85}
+        minAzimuthAngle={hasBackdrop ? BACKDROP_AZIMUTH_0 - BACKDROP_ORBIT_RANGE : -Infinity}
+        maxAzimuthAngle={hasBackdrop ? BACKDROP_AZIMUTH_0 + BACKDROP_ORBIT_RANGE : Infinity}
         mouseButtons={{
           // Drag orbits the camera — the single primary gesture. In paint
           // mode, left-drag paints instead, so right-drag orbits there —

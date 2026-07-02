@@ -1,6 +1,5 @@
 import { useEffect, useRef } from 'react';
 import { usePoseStore, POSES, POSE_WHEEL_ORDER } from '../store/usePoseStore';
-import { usePaintStore } from '../store/usePaintStore';
 import PoseIcon from './PoseIcon';
 
 const SIZE = 440;
@@ -46,7 +45,6 @@ export default function PoseWheel() {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() !== 'r') return;
-      if (usePaintStore.getState().paintMode) return;
       if (!usePoseStore.getState().wheelOpen) usePoseStore.getState().openWheel();
     };
     const onKeyUp = (e: KeyboardEvent) => {

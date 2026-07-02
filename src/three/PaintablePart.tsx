@@ -1,7 +1,11 @@
 import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 
-const TEX_SIZE = 512;
+// 1024 (up from 512) gives brush strokes finer positional/edge precision —
+// at the smallest brush size, a stroke used to be a handful of blocky pixels;
+// doubling resolution quadruples the pixel budget per stroke so small,
+// deliberate marks actually look like what the user placed.
+const TEX_SIZE = 1024;
 export const CLAY_COLOR = '#f1ece1';
 export const CLAY_ROUGHNESS = 0.85;
 export const CLAY_METALNESS = 0.04;

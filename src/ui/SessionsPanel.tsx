@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePoseStore } from '../store/usePoseStore';
 import { usePaintStore } from '../store/usePaintStore';
 import { useStageStore } from '../store/useStageStore';
@@ -21,6 +21,18 @@ export default function SessionsPanel({ captureRef }: Props) {
   useEffect(() => {
     if (open) refresh();
   }, [open]);
+
+  // Ctrl/Cmd+S saves the current session directly — no need to open the
+  // panel first, matching the save shortcut every other creative tool has.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 's') return;
+      e.preventDefault(); // stop the browser's native "save page" dialog
+      handleSaveRef.current();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   const handleSave = async () => {
     const name = window.prompt('Name this session:', `Session ${new Date().toLocaleString()}`);
@@ -51,10 +63,14 @@ export default function SessionsPanel({ captureRef }: Props) {
       };
       await saveSession(rec);
       await refresh();
+      setOpen(true); // surface the panel so the new entry is visible as confirmation
     } finally {
       setBusy(false);
     }
   };
+
+  const handleSaveRef = useRef(handleSave);
+  handleSaveRef.current = handleSave;
 
   const handleLoad = async (rec: SessionRecord) => {
     setBusy(true);
@@ -89,7 +105,7 @@ export default function SessionsPanel({ captureRef }: Props) {
 
   return (
     <>
-      <button className="sessions-open-btn" onClick={() => setOpen(true)}>
+      <button className="sessions-open-btn" title="Sessions (Ctrl/Cmd+S to save)" onClick={() => setOpen(true)}>
         Sessions
       </button>
 
@@ -103,7 +119,12 @@ export default function SessionsPanel({ captureRef }: Props) {
               </button>
             </div>
 
-            <button className="save-pfp-btn sessions-save" disabled={busy} onClick={handleSave}>
+            <button
+              className="save-pfp-btn sessions-save"
+              disabled={busy}
+              title="Ctrl/Cmd+S"
+              onClick={handleSave}
+            >
               {busy ? 'Working…' : '+ Save current session'}
             </button>
 

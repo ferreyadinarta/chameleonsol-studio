@@ -98,10 +98,21 @@ function App() {
     };
     const onDown = (e: KeyboardEvent) => {
       const k = e.key.toLowerCase();
-      if (!MOVE.has(k) || typing()) return;
+      // Ctrl/Cmd/Alt+<letter> is a shortcut (e.g. Ctrl+S to save), not a move
+      // command — without this guard, physically pressing "s" for Ctrl+S
+      // registers as "hold S to move down", and a native dialog opened right
+      // after (the save-name prompt, the file picker) can swallow the
+      // matching keyup, leaving the character sliding down forever.
+      if (!MOVE.has(k) || typing() || e.ctrlKey || e.metaKey || e.altKey) return;
       pressed.add(k);
     };
     const onUp = (e: KeyboardEvent) => pressed.delete(e.key.toLowerCase());
+    // Belt-and-suspenders: ANY native dialog (file picker, window.prompt,
+    // print dialog, alt-tab) can steal focus mid-keypress and eat the keyup,
+    // "sticking" a movement key held forever. Losing window focus always
+    // fires blur, so clearing here is the general fix regardless of cause.
+    const onBlur = () => pressed.clear();
+    window.addEventListener('blur', onBlur);
 
     let raf = 0;
     let last = performance.now();
@@ -130,6 +141,7 @@ function App() {
       cancelAnimationFrame(raf);
       window.removeEventListener('keydown', onDown);
       window.removeEventListener('keyup', onUp);
+      window.removeEventListener('blur', onBlur);
     };
   }, []);
 
