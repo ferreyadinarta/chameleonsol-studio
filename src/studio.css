@@ -11,6 +11,44 @@
   box-sizing: border-box;
 }
 
+/* Baseline hover/press feedback for every button in the app. Filled/colored
+   buttons darken slightly on hover; light/white ones get a visible border +
+   tint instead (a brightness filter alone is too subtle against near-white).
+   Color swatches (which must keep their exact color visible, not tinted)
+   scale up instead. All three layer on top of each other by specificity. */
+button {
+  transition: filter 0.15s ease, background-color 0.15s ease, border-color 0.15s ease, transform 0.08s ease, box-shadow 0.15s ease;
+}
+
+button:not(:disabled):hover {
+  filter: brightness(0.93);
+  cursor: pointer;
+}
+
+button:not(:disabled):active {
+  transform: scale(0.96);
+}
+
+.stage-btn:not(:disabled):hover,
+.sessions-open-btn:not(:disabled):hover,
+.gallery-toggle-btn:not(:disabled):hover,
+.icon-btn:not(:disabled):hover,
+.text-btn:not(:disabled):hover,
+.pfp-modal-close:not(:disabled):hover,
+.controls-hint-toggle:not(:disabled):hover,
+.stage-panel-head:not(:disabled):hover {
+  filter: none;
+  background: var(--cream);
+  border-color: var(--accent);
+}
+
+.color-btn:not(:disabled):hover,
+.stock-scene-swatch:not(:disabled):hover {
+  filter: none;
+  transform: scale(1.08);
+  box-shadow: 0 3px 10px rgba(44, 42, 38, 0.25);
+}
+
 html,
 body,
 #root {
@@ -137,24 +175,107 @@ body,
 }
 
 .cookie-modal {
-  width: min(420px, 92vw);
+  position: relative;
+  width: min(380px, 92vw);
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 28px 26px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 4px;
+  box-shadow: 0 20px 48px rgba(44, 42, 38, 0.22);
+}
+
+.cookie-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: linear-gradient(155deg, var(--accent), #c93e28);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 10px;
+  box-shadow: 0 6px 16px rgba(232, 83, 58, 0.35);
+}
+
+.cookie-title {
+  font-size: 17px;
+  font-weight: 800;
+  color: var(--ink);
 }
 
 .cookie-copy {
   font-size: 13px;
   line-height: 1.5;
+  color: var(--muted);
+  margin: 2px 0 4px;
+}
+
+.cookie-points {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-self: stretch;
+  text-align: left;
+  margin: 4px 0 20px;
+  padding: 14px 16px;
+  background: var(--cream);
+  border-radius: 12px;
+  font-size: 12px;
   color: var(--ink);
+}
+
+.cookie-points li {
+  position: relative;
+  padding-left: 18px;
+  line-height: 1.4;
+}
+
+.cookie-points li::before {
+  content: '✓';
+  position: absolute;
+  left: 0;
+  color: var(--accent);
+  font-weight: 800;
 }
 
 .cookie-actions {
   display: flex;
-  gap: 10px;
-  justify-content: flex-end;
+  flex-direction: column;
+  gap: 8px;
+  align-self: stretch;
 }
 
-.cookie-actions .stage-btn,
-.cookie-actions .save-pfp-btn {
-  padding: 10px 18px;
+.cookie-btn-accept,
+.cookie-btn-reject {
+  padding: 12px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  width: 100%;
+}
+
+.cookie-btn-accept {
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.cookie-btn-reject {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+}
+
+.cookie-btn-reject:hover {
+  color: var(--ink);
+  text-decoration: underline;
 }
 
 .session-item {
@@ -1096,6 +1217,12 @@ body,
   font-size: 11px;
   line-height: 1;
   cursor: pointer;
+}
+
+.gallery-item-remove:hover {
+  filter: none;
+  background: var(--accent);
+  transform: scale(1.15);
 }
 
 /* PFP preview modal */
