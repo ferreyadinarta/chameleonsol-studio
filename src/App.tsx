@@ -8,6 +8,7 @@ import BrushCursor from './ui/BrushCursor';
 import ReferenceCard from './ui/ReferenceCard';
 import Gallery from './ui/Gallery';
 import SessionsPanel from './ui/SessionsPanel';
+import CookieConsent from './ui/CookieConsent';
 import { usePoseStore, POSES } from './store/usePoseStore';
 import { usePaintStore } from './store/usePaintStore';
 import { useStageStore } from './store/useStageStore';
@@ -15,7 +16,7 @@ import { snapshotCharacter, pushCharacterUndo } from './utils/undoStack';
 import './studio.css';
 
 // @ts-expect-error temp debug hook
-window.__stageDebug = () => useStageStore.getState();
+window.__paintDebug = () => usePaintStore.getState();
 
 function App() {
   const captureRef = useRef<(() => string | null) | null>(null);
@@ -222,6 +223,8 @@ function App() {
         <Gallery captureRef={captureRef} />
         <SessionsPanel captureRef={captureRef} />
       </div>
+
+      <CookieConsent />
     </div>
   );
 }
