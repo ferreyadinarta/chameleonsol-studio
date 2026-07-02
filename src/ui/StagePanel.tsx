@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useStageStore } from '../store/useStageStore';
 import { STOCK_BACKGROUNDS } from '../utils/stockBackgrounds';
+import { snapshotCharacter, pushCharacterUndo, type CharacterSnapshot } from '../utils/undoStack';
 import UploadModal from './UploadModal';
 
 export default function StagePanel() {
@@ -10,6 +11,7 @@ export default function StagePanel() {
   const [open, setOpen] = useState(true);
   const [uploadOpen, setUploadOpen] = useState(false);
   const activeStock = STOCK_BACKGROUNDS.find((s) => s.url === bgImage)?.id ?? null;
+  const sliderPrevRef = useRef<CharacterSnapshot | null>(null);
 
   return (
     <div className="stage-panel">
@@ -54,11 +56,25 @@ export default function StagePanel() {
               max={3}
               step={0.01}
               value={charScale}
+              onPointerDown={() => {
+                sliderPrevRef.current = snapshotCharacter();
+              }}
               onChange={(e) => setCharScale(Number(e.target.value))}
+              onPointerUp={() => {
+                if (sliderPrevRef.current) pushCharacterUndo(sliderPrevRef.current);
+                sliderPrevRef.current = null;
+              }}
             />
           </label>
 
-          <button className="stage-btn stage-btn--full" onClick={resetTransform}>
+          <button
+            className="stage-btn stage-btn--full"
+            onClick={() => {
+              const prev = snapshotCharacter();
+              resetTransform();
+              pushCharacterUndo(prev);
+            }}
+          >
             Reset position &amp; size
           </button>
         </div>

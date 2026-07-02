@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { usePoseStore, POSES, POSE_WHEEL_ORDER } from '../store/usePoseStore';
+import { snapshotCharacter, pushCharacterUndo } from '../utils/undoStack';
 import PoseIcon from './PoseIcon';
 
 const SIZE = 440;
@@ -49,7 +50,11 @@ export default function PoseWheel() {
     };
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() !== 'r') return;
-      if (usePoseStore.getState().wheelOpen) usePoseStore.getState().lockHovered();
+      if (usePoseStore.getState().wheelOpen) {
+        const prev = snapshotCharacter();
+        usePoseStore.getState().lockHovered();
+        pushCharacterUndo(prev);
+      }
     };
     window.addEventListener('keydown', onKeyDown);
     window.addEventListener('keyup', onKeyUp);

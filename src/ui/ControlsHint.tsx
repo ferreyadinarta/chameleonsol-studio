@@ -77,6 +77,13 @@ export default function ControlsHint() {
             </span>
           </div>
           <div className="controls-hint-divider" />
+          <div className="controls-hint-row controls-hint-row--keys">
+            <span className="ctrl-keys">
+              <Key>Ctrl</Key>
+              <Key>Z</Key>
+            </span>
+            <span>Undo</span>
+          </div>
           {paintMode && (
             <>
               <div className="controls-hint-row controls-hint-row--keys">
@@ -100,29 +107,36 @@ export default function ControlsHint() {
               </div> */}
             </>
           )}
-          <div className="controls-hint-row controls-hint-row--keys">
-            <span className="ctrl-keys">
-              <Key>W</Key>
-              <Key>A</Key>
-              <Key>S</Key>
-              <Key>D</Key>
-            </span>
-            <span>Move figure</span>
-          </div>
-          <div className="controls-hint-row controls-hint-row--keys">
-            <span className="ctrl-keys">
-              <Key>Z</Key>
-              <Key>X</Key>
-            </span>
-            <span>Move near / far</span>
-          </div>
-          <div className="controls-hint-row controls-hint-row--keys">
-            <span className="ctrl-keys">
-              <Key>Q</Key>
-              <Key>E</Key>
-            </span>
-            <span>Rotate figure</span>
-          </div>
+          {/* Move/rotate shortcuts are disabled in paint mode (nothing
+              should shift under the cursor mid-stroke), so the hints only
+              make sense to show outside it. */}
+          {!paintMode && (
+            <>
+              <div className="controls-hint-row controls-hint-row--keys">
+                <span className="ctrl-keys">
+                  <Key>W</Key>
+                  <Key>A</Key>
+                  <Key>S</Key>
+                  <Key>D</Key>
+                </span>
+                <span>Move figure</span>
+              </div>
+              <div className="controls-hint-row controls-hint-row--keys">
+                <span className="ctrl-keys">
+                  <Key>Z</Key>
+                  <Key>X</Key>
+                </span>
+                <span>Move near / far</span>
+              </div>
+              <div className="controls-hint-row controls-hint-row--keys">
+                <span className="ctrl-keys">
+                  <Key>Q</Key>
+                  <Key>E</Key>
+                </span>
+                <span>Rotate figure</span>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

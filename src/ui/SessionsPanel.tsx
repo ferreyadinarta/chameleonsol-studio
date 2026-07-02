@@ -11,6 +11,7 @@ type Props = {
 };
 
 export default function SessionsPanel({ captureRef }: Props) {
+  const paintMode = usePaintStore((s) => s.paintMode);
   const [open, setOpen] = useState(false);
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [busy, setBusy] = useState(false);
@@ -112,14 +113,19 @@ export default function SessionsPanel({ captureRef }: Props) {
 
   return (
     <>
-      <div className="sessions-actions">
-        <button className="save-pfp-btn" disabled={busy} title="Save current session (Ctrl/Cmd+S)" onClick={handleSave}>
-          {busy ? 'Saving…' : 'Save Session'}
-        </button>
-        <button className="sessions-open-btn" onClick={() => setOpen(true)}>
-          Sessions ({sessions.length})
-        </button>
-      </div>
+      {/* Hidden (not unmounted) in paint mode — the paint toolbar occupies
+          this same bottom band, and this component must stay mounted so its
+          Ctrl/Cmd+S listener keeps working even with the buttons hidden. */}
+      {!paintMode && (
+        <div className="sessions-actions">
+          <button className="save-pfp-btn" disabled={busy} title="Save current session (Ctrl/Cmd+S)" onClick={handleSave}>
+            {busy ? 'Saving…' : 'Save Session'}
+          </button>
+          <button className="sessions-open-btn" onClick={() => setOpen(true)}>
+            Sessions ({sessions.length})
+          </button>
+        </div>
+      )}
 
       {open && (
         <div className="pfp-modal-overlay" onClick={() => setOpen(false)}>

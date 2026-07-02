@@ -18,6 +18,7 @@ type Props = {
 };
 
 export default function Gallery({ captureRef }: Props) {
+  const paintMode = usePaintStore((s) => s.paintMode);
   const [shots, setShots] = useState<string[]>(loadGallery);
   const [open, setOpen] = useState(false);
   const [preview, setPreview] = useState<number | null>(null);
@@ -59,14 +60,19 @@ export default function Gallery({ captureRef }: Props) {
 
   return (
     <div className="gallery">
-      <div className="gallery-actions">
-        <button className="save-pfp-btn" onClick={handleSave}>
-          Save as PFP
-        </button>
-        <button className="gallery-toggle-btn" onClick={() => setOpen((o) => !o)}>
-          Gallery ({shots.length})
-        </button>
-      </div>
+      {/* Hidden (not unmounted) in paint mode — the paint toolbar occupies
+          this same bottom band, and this component must stay mounted so its
+          save-signal subscription (the paint panel's Save button) keeps working. */}
+      {!paintMode && (
+        <div className="gallery-actions">
+          <button className="save-pfp-btn" onClick={handleSave}>
+            Save as PFP
+          </button>
+          <button className="gallery-toggle-btn" onClick={() => setOpen((o) => !o)}>
+            Gallery ({shots.length})
+          </button>
+        </div>
+      )}
       {open &&
         (shots.length === 0 ? (
           <div className="gallery-grid">

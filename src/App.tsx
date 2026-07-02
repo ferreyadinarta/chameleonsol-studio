@@ -11,7 +11,11 @@ import SessionsPanel from './ui/SessionsPanel';
 import { usePoseStore, POSES } from './store/usePoseStore';
 import { usePaintStore } from './store/usePaintStore';
 import { useStageStore } from './store/useStageStore';
+import { snapshotCharacter, pushCharacterUndo } from './utils/undoStack';
 import './studio.css';
+
+// @ts-expect-error temp debug hook
+window.__stageDebug = () => useStageStore.getState();
 
 function App() {
   const captureRef = useRef<(() => string | null) | null>(null);
@@ -87,12 +91,12 @@ function App() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
-  // Ctrl/Cmd+Z undoes the last stroke — the standard shortcut, so painting
-  // doesn't require reaching for the Undo button every time.
+  // Ctrl/Cmd+Z undoes the last action — paint stroke or character move/pose —
+  // whichever happened most recently, so it works the same everywhere instead
+  // of only inside paint mode.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z') return;
-      if (!usePaintStore.getState().paintMode) return;
       e.preventDefault(); // stop the browser's native undo
       usePaintStore.getState().requestUndo();
     };
@@ -101,13 +105,23 @@ function App() {
   }, []);
 
   // WASD move the character, Z/X move it near/far, Q/E rotate it (turntable).
-  // Held keys act continuously.
+  // Held keys act continuously. Disabled in paint mode — nothing should shift
+  // under the cursor mid-stroke.
   useEffect(() => {
     const pressed = new Set<string>();
     const MOVE = new Set(['w', 'a', 's', 'd', 'q', 'e', 'z', 'x']);
     const typing = () => {
       const a = document.activeElement;
       return !!a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA');
+    };
+    // Brackets a whole hold-session (from the first movement key pressed to
+    // the last one released) as a single undo step, snapshotted just before
+    // anything moved.
+    let sessionPrev: ReturnType<typeof snapshotCharacter> | null = null;
+    const endSession = () => {
+      if (!sessionPrev) return;
+      pushCharacterUndo(sessionPrev);
+      sessionPrev = null;
     };
     const onDown = (e: KeyboardEvent) => {
       const k = e.key.toLowerCase();
@@ -117,14 +131,22 @@ function App() {
       // after (the save-name prompt, the file picker) can swallow the
       // matching keyup, leaving the character sliding down forever.
       if (!MOVE.has(k) || typing() || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (usePaintStore.getState().paintMode) return;
+      if (pressed.size === 0) sessionPrev = snapshotCharacter();
       pressed.add(k);
     };
-    const onUp = (e: KeyboardEvent) => pressed.delete(e.key.toLowerCase());
+    const onUp = (e: KeyboardEvent) => {
+      pressed.delete(e.key.toLowerCase());
+      if (pressed.size === 0) endSession();
+    };
     // Belt-and-suspenders: ANY native dialog (file picker, window.prompt,
     // print dialog, alt-tab) can steal focus mid-keypress and eat the keyup,
     // "sticking" a movement key held forever. Losing window focus always
     // fires blur, so clearing here is the general fix regardless of cause.
-    const onBlur = () => pressed.clear();
+    const onBlur = () => {
+      pressed.clear();
+      endSession();
+    };
     window.addEventListener('blur', onBlur);
 
     let raf = 0;
@@ -132,7 +154,7 @@ function App() {
     const loop = (t: number) => {
       const dt = Math.min(0.05, (t - last) / 1000);
       last = t;
-      if (pressed.size && !usePoseStore.getState().wheelOpen) {
+      if (pressed.size && !usePoseStore.getState().wheelOpen && !usePaintStore.getState().paintMode) {
         const s = useStageStore.getState();
         const v = 2.4 * dt;
         // setters clamp to the stage bounds (floor / backdrop)

@@ -2,16 +2,16 @@ import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { usePaintStore } from '../store/usePaintStore';
+import { usePoseStore } from '../store/usePoseStore';
 import { paintStroke, resetCanvases, paintableMeshes, TEX_SIZE, type PaintCanvases } from './PaintablePart';
 import { spawnPaintBlobs } from './PaintBlobs';
 import { useStageStore } from '../store/useStageStore';
 import { ensureBgSampler, sampleBgAt } from '../utils/bgSampler';
 import { brushHover } from './brushHover';
 import { cameraRig } from './cameraRig';
+import { pushUndo, popUndo, clearPaintUndo, type PaintGesture } from '../utils/undoStack';
 
-type GestureSnapshot = Map<THREE.Mesh, { albedo: ImageData; orm: ImageData }>;
-
-const UNDO_LIMIT = 20;
+type GestureSnapshot = PaintGesture;
 
 const BRUSH_MIN = 0.02;
 const BRUSH_MAX = 0.35;
@@ -21,7 +21,6 @@ export default function PaintController() {
   const paintingRef = useRef(false);
   const raycaster = useRef(new THREE.Raycaster());
   const pointer = useRef(new THREE.Vector2());
-  const undoStackRef = useRef<GestureSnapshot[]>([]);
   const currentGestureRef = useRef<GestureSnapshot | null>(null);
   // Raw pointermove events just queue points here; the actual raycast + canvas
   // draw work happens once per rendered frame (see useFrame below). Without
@@ -72,14 +71,24 @@ export default function PaintController() {
 
     const unsubUndo = usePaintStore.subscribe((state, prev) => {
       if (state.undoSignal === prev.undoSignal) return;
-      const gesture = undoStackRef.current.pop();
-      if (!gesture) return;
-      gesture.forEach((snap, mesh) => {
-        const canvases = mesh.userData.canvases as PaintCanvases;
-        canvases.albedoCtx.putImageData(snap.albedo, 0, 0);
-        canvases.ormCtx.putImageData(snap.orm, 0, 0);
-        markDirty(mesh);
-      });
+      const entry = popUndo();
+      if (!entry) return;
+      if (entry.kind === 'paint') {
+        entry.gesture.forEach((snap, mesh) => {
+          const canvases = mesh.userData.canvases as PaintCanvases;
+          canvases.albedoCtx.putImageData(snap.albedo, 0, 0);
+          canvases.ormCtx.putImageData(snap.orm, 0, 0);
+          markDirty(mesh);
+        });
+      } else {
+        const st = useStageStore.getState();
+        st.setCharX(entry.prev.charX);
+        st.setCharY(entry.prev.charY);
+        st.setCharZ(entry.prev.charZ);
+        st.setCharRotY(entry.prev.charRotY);
+        st.setCharScale(entry.prev.charScale);
+        usePoseStore.getState().setLockedPose(entry.prev.lockedPoseId);
+      }
     });
 
     const unsubClear = usePaintStore.subscribe((state, prev) => {
@@ -88,7 +97,7 @@ export default function PaintController() {
         resetCanvases(mesh.userData.canvases as PaintCanvases);
         markDirty(mesh);
       });
-      undoStackRef.current = [];
+      clearPaintUndo();
     });
 
     // Brush/eraser only need the paintable meshes — a flat, non-recursive
@@ -319,8 +328,7 @@ export default function PaintController() {
       const gesture = currentGestureRef.current;
       currentGestureRef.current = null;
       if (gesture && gesture.size > 0) {
-        undoStackRef.current.push(gesture);
-        if (undoStackRef.current.length > UNDO_LIMIT) undoStackRef.current.shift();
+        pushUndo({ kind: 'paint', gesture });
       }
     };
 
