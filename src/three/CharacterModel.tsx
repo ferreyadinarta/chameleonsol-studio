@@ -4,6 +4,7 @@ import { useGLTF } from '@react-three/drei';
 import { useFrame } from '@react-three/fiber';
 import { usePoseStore } from '../store/usePoseStore';
 import { attachPaintToMesh } from './PaintablePart';
+import { repackPaintUVs } from './repackPaintUVs';
 import { GLB_POSES, buildPoseQuaternions, type GlbPose } from './glbRig';
 
 // Drop a model at public/character.glb to use it instead of the procedural
@@ -95,6 +96,7 @@ export default function CharacterModel() {
         mesh.castShadow = false;
         mesh.receiveShadow = false;
         mesh.frustumCulled = false;
+        if (mesh.isSkinnedMesh) repackPaintUVs(mesh); // before attachPaintToMesh: raycasts must see the fixed UVs
         cleanups.push(attachPaintToMesh(mesh));
         if (mesh.isSkinnedMesh) {
           const outline = addOutline(mesh);

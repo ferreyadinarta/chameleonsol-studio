@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
+import { photoBoardRig } from './photoBoardRig';
 
 const MAX_WIDTH = 4.6;
 const MAX_HEIGHT = 4.4;
@@ -13,6 +14,7 @@ const BOARD_Z = -2.2;
 export default function PhotoBoard({ imageUrl }: { imageUrl: string }) {
   const [texture, setTexture] = useState<THREE.Texture | null>(null);
   const [aspect, setAspect] = useState(1);
+  const groupRef = useRef<THREE.Group>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -33,13 +35,26 @@ export default function PhotoBoard({ imageUrl }: { imageUrl: string }) {
 
   useEffect(() => () => texture?.dispose(), [texture]);
 
-  if (!texture) return null;
-
   const w = aspect >= MAX_WIDTH / MAX_HEIGHT ? MAX_WIDTH : MAX_HEIGHT * aspect;
   const h = aspect >= MAX_WIDTH / MAX_HEIGHT ? MAX_WIDTH / aspect : MAX_HEIGHT;
 
+  // Lets a PFP capture crop to exactly this board's on-screen rectangle
+  // instead of the whole viewport (see photoBoardRig / capturePfp).
+  useEffect(() => {
+    photoBoardRig.group = texture ? groupRef.current : null;
+    photoBoardRig.width = w;
+    photoBoardRig.height = h;
+    return () => {
+      photoBoardRig.group = null;
+      photoBoardRig.width = 0;
+      photoBoardRig.height = 0;
+    };
+  }, [texture, w, h]);
+
+  if (!texture) return null;
+
   return (
-    <group position={[0, h / 2 + 0.15, BOARD_Z]}>
+    <group ref={groupRef} position={[0, h / 2 + 0.15, BOARD_Z]}>
       {/* frame */}
       <mesh position={[0, 0, -0.01]}>
         <planeGeometry args={[w + FRAME_MARGIN * 2, h + FRAME_MARGIN * 2]} />

@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { useFrame, useThree } from '@react-three/fiber';
 import { usePaintStore } from '../store/usePaintStore';
 import { usePoseStore } from '../store/usePoseStore';
-import { paintStroke, resetCanvases, paintableMeshes, TEX_SIZE, type PaintCanvases } from './PaintablePart';
+import { paintStroke, resetCanvases, paintableMeshes, getPaintableMeshArray, TEX_SIZE, type PaintCanvases } from './PaintablePart';
 import { spawnPaintBlobs } from './PaintBlobs';
 import { useStageStore } from '../store/useStageStore';
 import { ensureBgSampler, sampleBgAt } from '../utils/bgSampler';
@@ -108,7 +108,7 @@ export default function PaintController() {
       pointer.current.x = ((clientX - rect.left) / rect.width) * 2 - 1;
       pointer.current.y = -((clientY - rect.top) / rect.height) * 2 + 1;
       raycaster.current.setFromCamera(pointer.current, camera);
-      const hits = raycaster.current.intersectObjects(Array.from(paintableMeshes), false);
+      const hits = raycaster.current.intersectObjects(getPaintableMeshArray(), false);
       return hits[0];
     };
 
@@ -205,10 +205,60 @@ export default function PaintController() {
       usePaintStore.getState().setEyedropperHover(hex ? { x: clientX, y: clientY, color: hex } : null);
     };
 
+    // Derives world units per unit of UV distance at the hit triangle — the
+    // same tangent-basis math used for normal-map tangents. The brush paints
+    // a fixed-radius circle in UV space (see paintStroke), but UV texel
+    // density varies hugely across the body, so this is what lets the cursor
+    // honestly preview how big a mark will land at THIS spot, not a generic
+    // guess for the whole figure.
+    const _posA = new THREE.Vector3();
+    const _posB = new THREE.Vector3();
+    const _posC = new THREE.Vector3();
+    const _uvA = new THREE.Vector2();
+    const _uvB = new THREE.Vector2();
+    const _uvC = new THREE.Vector2();
+    const _edge1 = new THREE.Vector3();
+    const _edge2 = new THREE.Vector3();
+    const _dPdU = new THREE.Vector3();
+    const _dPdV = new THREE.Vector3();
+    const _worldScale = new THREE.Vector3();
+    const uvToWorldScale = (hit: THREE.Intersection): number => {
+      const face = hit.face;
+      const mesh = hit.object as THREE.Mesh;
+      const uvAttr = mesh.geometry.attributes.uv as THREE.BufferAttribute | undefined;
+      const posAttr = mesh.geometry.attributes.position as THREE.BufferAttribute;
+      if (!face || !uvAttr) return 1;
+      _posA.fromBufferAttribute(posAttr, face.a);
+      _posB.fromBufferAttribute(posAttr, face.b);
+      _posC.fromBufferAttribute(posAttr, face.c);
+      _uvA.fromBufferAttribute(uvAttr, face.a);
+      _uvB.fromBufferAttribute(uvAttr, face.b);
+      _uvC.fromBufferAttribute(uvAttr, face.c);
+
+      const uv1x = _uvB.x - _uvA.x;
+      const uv1y = _uvB.y - _uvA.y;
+      const uv2x = _uvC.x - _uvA.x;
+      const uv2y = _uvC.y - _uvA.y;
+      const det = uv1x * uv2y - uv2x * uv1y;
+      if (Math.abs(det) < 1e-9) return 1; // degenerate UV triangle — fall back
+
+      _edge1.subVectors(_posB, _posA);
+      _edge2.subVectors(_posC, _posA);
+      const f = 1 / det;
+      _dPdU.copy(_edge1).multiplyScalar(uv2y).addScaledVector(_edge2, -uv1y).multiplyScalar(f);
+      _dPdV.copy(_edge2).multiplyScalar(uv1x).addScaledVector(_edge1, -uv2x).multiplyScalar(f);
+
+      const localScale = (_dPdU.length() + _dPdV.length()) / 2;
+      mesh.getWorldScale(_worldScale);
+      const worldScale = (_worldScale.x + _worldScale.y + _worldScale.z) / 3; // uniform in practice
+      return localScale * worldScale;
+    };
+
     const setBrushHoverFromHit = (hit: THREE.Intersection) => {
       brushHover.active = true;
       brushHover.point.copy(hit.point);
       if (hit.face) brushHover.normal.copy(hit.face.normal).transformDirection(hit.object.matrixWorld).normalize();
+      brushHover.uvToWorldScale = uvToWorldScale(hit);
     };
 
     // When the cursor isn't over the figure, place the brush on a camera-facing

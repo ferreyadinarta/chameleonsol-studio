@@ -1,11 +1,12 @@
 import { useMemo, useRef } from 'react';
 import * as THREE from 'three';
 
-// 1024 (up from 512) gives brush strokes finer positional/edge precision —
-// at the smallest brush size, a stroke used to be a handful of blocky pixels;
-// doubling resolution quadruples the pixel budget per stroke so small,
-// deliberate marks actually look like what the user placed.
-const TEX_SIZE = 1024;
+// Reverted from a 1024 experiment: every painted frame re-uploads the full
+// albedo+orm canvases to the GPU (CanvasTexture has no partial-update path),
+// so doubling resolution quadrupled that per-frame upload cost — the direct
+// cause of paint lag on lower-end GPUs. The brush-cursor sizing fix (see
+// brushHover.uvToWorldScale) covers the precision goal without this cost.
+const TEX_SIZE = 512;
 export const CLAY_COLOR = '#f1ece1';
 export const CLAY_ROUGHNESS = 0.85;
 export const CLAY_METALNESS = 0.04;
@@ -42,6 +43,25 @@ function makeCanvases(): PaintCanvases {
 
 export const paintableMeshes = new Set<THREE.Mesh>();
 
+// Raycasting needs a plain array. Rebuilding it with `Array.from` on every
+// call allocated a fresh array on every raycast — several times per rendered
+// frame while actively painting — pure GC churn that read as stutter,
+// especially on weaker machines. paintableMeshes only changes at model
+// load/unload, so cache the array and invalidate on those rare mutations.
+let meshArrayCache: THREE.Mesh[] | null = null;
+function registerPaintable(mesh: THREE.Mesh) {
+  paintableMeshes.add(mesh);
+  meshArrayCache = null;
+}
+function unregisterPaintable(mesh: THREE.Mesh) {
+  paintableMeshes.delete(mesh);
+  meshArrayCache = null;
+}
+export function getPaintableMeshArray(): THREE.Mesh[] {
+  if (!meshArrayCache) meshArrayCache = Array.from(paintableMeshes);
+  return meshArrayCache;
+}
+
 // Make an arbitrary (e.g. loaded GLB) mesh paintable: give it its own clay
 // paint canvas, swap in a paint material, and register it for raycasting.
 // Returns a cleanup that unregisters + disposes.
@@ -55,13 +75,12 @@ export function attachPaintToMesh(mesh: THREE.Mesh): () => void {
   // paintStroke writes at canvas y = (1 - uv.y), which a flipY=true texture
   // samples back to the same uv — matching the procedural parts.
 
-  // Lightly lit (not fully flat): a dominant ambient keeps painted colors close
-  // to their exact hex, while a soft, non-shadow-casting directional light adds
-  // just enough gradient across the form (brighter front, dimmer back/sides) so
-  // the 3D shape reads even without a visible cast shadow. Lambert (not
-  // Standard/PBR) — same diffuse-only look, cheaper per-pixel cost, no
-  // specular/IBL sampling. toneMapped: false so the tone curve doesn't shift
-  // the picked color.
+  // Lit, but heavily ambient-dominant: fully unlit read as too flat (no 3D
+  // form cues at all), fully lit (the old balance) darkened the far/shadowed
+  // side enough to visibly diverge from the picked hex. This ratio keeps the
+  // lit side within a few RGB steps of the exact hex while the directional
+  // light still adds a soft, legible gradient across the form. Lambert (not
+  // Standard/PBR) — diffuse-only, cheaper per-pixel, no specular/IBL sampling.
   const material = new THREE.MeshLambertMaterial({
     map: albedoTexture,
     toneMapped: false,
@@ -73,10 +92,10 @@ export function attachPaintToMesh(mesh: THREE.Mesh): () => void {
   mesh.userData.albedoTexture = albedoTexture;
   mesh.userData.ormTexture = ormTexture;
   mesh.userData.paintable = true;
-  paintableMeshes.add(mesh);
+  registerPaintable(mesh);
 
   return () => {
-    paintableMeshes.delete(mesh);
+    unregisterPaintable(mesh);
     mesh.material = prevMaterial;
     material.dispose();
     albedoTexture.dispose();
@@ -216,9 +235,9 @@ export default function PaintablePart({ geometry }: Props) {
           m.userData.albedoTexture = albedoTexture;
           m.userData.ormTexture = ormTexture;
           m.userData.paintable = true;
-          paintableMeshes.add(m);
+          registerPaintable(m);
         } else if (meshRef.current) {
-          paintableMeshes.delete(meshRef.current);
+          unregisterPaintable(meshRef.current);
         }
         meshRef.current = m;
       }}
