@@ -70,3 +70,15 @@ export async function deleteSession(id: string): Promise<void> {
     tx.onerror = () => reject(tx.error);
   });
 }
+
+// Wipes every saved session — used when the user rejects local storage
+// consent, so declining actually removes what's already there too.
+export async function clearAllSessions(): Promise<void> {
+  const db = await openDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    tx.objectStore(STORE).clear();
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}

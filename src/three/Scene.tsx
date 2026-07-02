@@ -8,6 +8,7 @@ import PaintBlobs from './PaintBlobs';
 import PhotoBoard from './PhotoBoard';
 import { brushHover } from './brushHover';
 import { cameraRig } from './cameraRig';
+import { capturePfp } from './capture';
 import { usePaintStore } from '../store/usePaintStore';
 import { useStageStore } from '../store/useStageStore';
 
@@ -104,7 +105,12 @@ function BrushDecal() {
     g.position.copy(brushHover.point).addScaledVector(brushHover.normal, 0.008);
     q.current.setFromUnitVectors(up.current, brushHover.normal);
     g.quaternion.copy(q.current);
-    const r = 0.06 + ps.brushSize * 0.6;
+    // paintStroke fills a circle of UV-radius (brushSize * 0.5); converting
+    // that through the actual local UV-to-world density at this exact spot
+    // (instead of a generic made-up formula) is what makes the ring a true
+    // preview of how big a mark will land — a torso stroke and a finger
+    // stroke at the same brushSize cover very different amounts of surface.
+    const r = Math.max(0.02, ps.brushSize * 0.5 * brushHover.uvToWorldScale);
     g.scale.set(r, r, r);
     light.color.set(isEraser ? '#e8913a' : '#ffffff');
     dot.color.set(isEraser ? '#e8913a' : ps.color);
@@ -234,20 +240,20 @@ export default function Scene({ captureRef }: Props) {
       camera={{ position: [3.5, 2.2, 5.5], fov: 36 }}
       dpr={[1, 2]}
       onCreated={(state) => {
-        // The backdrop (PhotoBoard) is a real 3D mesh now, already part of the
-        // WebGL render, so capturing a PFP is just reading the canvas.
-        captureRef.current = () => state.gl.domElement.toDataURL('image/png');
+        captureRef.current = () => capturePfp(state.gl, state.camera);
       }}
     >
       {/* Always set: a photo/stock backdrop is a finite plane, so orbiting or
           panning far enough can reveal empty space past its edges — without
           this it renders as a jarring black void instead of a neutral fill. */}
       <color attach="background" args={['#e9e4d8']} />
-      {/* Ambient dominates so painted colors stay close to their exact hex;
-          the soft directional light (no shadow map) only adds a whisper of
-          gradient across the form so the 3D shape still reads up close. */}
-      <ambientLight intensity={2.4} />
-      <directionalLight position={[2, 3.2, 2.6]} intensity={0.7} />
+      {/* Ambient heavily dominates so painted colors stay within a few RGB
+          steps of their exact hex on the lit side; the directional light
+          (no shadow map) only adds a soft gradient across the form so the 3D
+          shape still reads, without darkening the far side into a visibly
+          different color. */}
+      <ambientLight intensity={3.0} />
+      <directionalLight position={[2, 3.2, 2.6]} intensity={0.35} />
 
       {!hasBackdrop && (
         <>

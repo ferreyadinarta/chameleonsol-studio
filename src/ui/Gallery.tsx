@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { usePaintStore } from '../store/usePaintStore';
+import { storageAllowed } from '../utils/consent';
 
-const GALLERY_KEY = 'chameleonsol-gallery';
+export const GALLERY_KEY = 'chameleonsol-gallery';
 
 function loadGallery(): string[] {
   try {
@@ -24,7 +25,9 @@ export default function Gallery({ captureRef }: Props) {
   const [preview, setPreview] = useState<number | null>(null);
 
   useEffect(() => {
-    localStorage.setItem(GALLERY_KEY, JSON.stringify(shots));
+    // Gallery still works this session either way — rejecting storage just
+    // means it won't be remembered on the next visit.
+    if (storageAllowed()) localStorage.setItem(GALLERY_KEY, JSON.stringify(shots));
   }, [shots]);
 
   const handleSave = () => {
@@ -73,23 +76,33 @@ export default function Gallery({ captureRef }: Props) {
           </button>
         </div>
       )}
-      {open &&
-        (shots.length === 0 ? (
-          <div className="gallery-grid">
-            <div className="gallery-empty">No saved PFPs yet.</div>
-          </div>
-        ) : (
-          <div className="gallery-grid">
-            {shots.map((shot, i) => (
-              <div className="gallery-item" key={i}>
-                <img src={shot} alt={`PFP ${i + 1}`} onClick={() => setPreview(i)} />
-                <button className="gallery-item-remove" onClick={() => handleRemove(i)}>
-                  ×
-                </button>
+      {open && (
+        <div className="pfp-modal-overlay" onClick={() => setOpen(false)}>
+          <div className="sessions-modal gallery-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="sessions-modal-head">
+              <span>GALLERY</span>
+              <button className="pfp-modal-close" onClick={() => setOpen(false)}>
+                ×
+              </button>
+            </div>
+
+            {shots.length === 0 ? (
+              <div className="gallery-empty gallery-empty--modal">No saved PFPs yet — hit "Save as PFP" to start one.</div>
+            ) : (
+              <div className="gallery-grid">
+                {shots.map((shot, i) => (
+                  <div className="gallery-item" key={i}>
+                    <img src={shot} alt={`PFP ${i + 1}`} onClick={() => setPreview(i)} />
+                    <button className="gallery-item-remove" onClick={() => handleRemove(i)}>
+                      ×
+                    </button>
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </div>
-        ))}
+        </div>
+      )}
 
       {preview !== null && shots[preview] && (
         <div className="pfp-modal-overlay" onClick={() => setPreview(null)}>

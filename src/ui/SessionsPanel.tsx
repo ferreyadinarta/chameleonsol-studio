@@ -5,6 +5,7 @@ import { useStageStore } from '../store/useStageStore';
 import { serializePaintState, restorePaintState } from '../three/PaintablePart';
 import { getCameraState, applyCameraState } from '../three/cameraRig';
 import { listSessions, saveSession, deleteSession, type SessionRecord } from '../utils/sessionsDB';
+import { storageAllowed } from '../utils/consent';
 
 type Props = {
   captureRef: { current: (() => string | null) | null };
@@ -43,6 +44,10 @@ export default function SessionsPanel({ captureRef }: Props) {
   }, []);
 
   const handleSave = async () => {
+    if (!storageAllowed()) {
+      window.alert('Sessions can\'t be saved right now — you rejected local storage. Accept it (see the cookie prompt) to save and reload sessions.');
+      return;
+    }
     const name = window.prompt('Name this session:', `Session ${new Date().toLocaleString()}`);
     if (name === null) return;
     setBusy(true);
