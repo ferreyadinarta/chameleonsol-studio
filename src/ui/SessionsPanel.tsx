@@ -14,9 +14,16 @@ export default function SessionsPanel({ captureRef }: Props) {
   const [open, setOpen] = useState(false);
   const [sessions, setSessions] = useState<SessionRecord[]>([]);
   const [busy, setBusy] = useState(false);
+  const [loadingId, setLoadingId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
   const refresh = () => listSessions().then(setSessions).catch(() => setSessions([]));
+
+  // Fetch once on mount too (not just when opened) so the "Sessions (N)"
+  // count is visible on the collapsed button without needing to open it.
+  useEffect(() => {
+    refresh();
+  }, []);
 
   useEffect(() => {
     if (open) refresh();
@@ -73,7 +80,7 @@ export default function SessionsPanel({ captureRef }: Props) {
   handleSaveRef.current = handleSave;
 
   const handleLoad = async (rec: SessionRecord) => {
-    setBusy(true);
+    setLoadingId(rec.id);
     try {
       const d = rec.data;
       useStageStore.getState().loadStage({
@@ -88,12 +95,12 @@ export default function SessionsPanel({ captureRef }: Props) {
       usePaintStore.getState().setPalette(d.palette);
       usePaintStore.getState().setColor(d.color);
       applyCameraState(d.camera);
-      setOpen(false);
       await restorePaintState(d.paint);
+      setOpen(false);
     } catch (err) {
       console.error('[Sessions] load failed', err);
     } finally {
-      setBusy(false);
+      setLoadingId(null);
     }
   };
 
@@ -105,9 +112,14 @@ export default function SessionsPanel({ captureRef }: Props) {
 
   return (
     <>
-      <button className="sessions-open-btn" title="Sessions (Ctrl/Cmd+S to save)" onClick={() => setOpen(true)}>
-        Sessions
-      </button>
+      <div className="sessions-actions">
+        <button className="save-pfp-btn" disabled={busy} title="Save current session (Ctrl/Cmd+S)" onClick={handleSave}>
+          {busy ? 'Saving…' : 'Save Session'}
+        </button>
+        <button className="sessions-open-btn" onClick={() => setOpen(true)}>
+          Sessions ({sessions.length})
+        </button>
+      </div>
 
       {open && (
         <div className="pfp-modal-overlay" onClick={() => setOpen(false)}>
@@ -118,15 +130,6 @@ export default function SessionsPanel({ captureRef }: Props) {
                 ×
               </button>
             </div>
-
-            <button
-              className="save-pfp-btn sessions-save"
-              disabled={busy}
-              title="Ctrl/Cmd+S"
-              onClick={handleSave}
-            >
-              {busy ? 'Working…' : '+ Save current session'}
-            </button>
 
             <div className="sessions-list">
               {sessions.length === 0 && <div className="gallery-empty">No saved sessions yet.</div>}
@@ -153,10 +156,14 @@ export default function SessionsPanel({ captureRef }: Props) {
                       </>
                     ) : (
                       <>
-                        <button className="stage-btn stage-btn--primary" disabled={busy} onClick={() => handleLoad(s)}>
-                          Load
+                        <button
+                          className="stage-btn stage-btn--primary"
+                          disabled={loadingId !== null}
+                          onClick={() => handleLoad(s)}
+                        >
+                          {loadingId === s.id ? 'Loading…' : 'Load'}
                         </button>
-                        <button className="stage-btn" onClick={() => setConfirmId(s.id)}>
+                        <button className="stage-btn" disabled={loadingId !== null} onClick={() => setConfirmId(s.id)}>
                           Delete
                         </button>
                       </>

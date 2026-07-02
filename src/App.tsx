@@ -87,6 +87,19 @@ function App() {
     return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
+  // Ctrl/Cmd+Z undoes the last stroke — the standard shortcut, so painting
+  // doesn't require reaching for the Undo button every time.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.key.toLowerCase() !== 'z') return;
+      if (!usePaintStore.getState().paintMode) return;
+      e.preventDefault(); // stop the browser's native undo
+      usePaintStore.getState().requestUndo();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
+
   // WASD move the character, Z/X move it near/far, Q/E rotate it (turntable).
   // Held keys act continuously.
   useEffect(() => {

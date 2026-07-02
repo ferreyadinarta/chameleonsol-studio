@@ -22,6 +22,7 @@ export default function UploadModal({ onClose }: { onClose: () => void }) {
   const [picked, setPicked] = useState<Picked | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
+  const [reading, setReading] = useState(false);
 
   const ingest = (file: File) => {
     setError(null);
@@ -29,11 +30,12 @@ export default function UploadModal({ onClose }: { onClose: () => void }) {
       setError('That file is not an image.');
       return;
     }
+    setReading(true);
     const reader = new FileReader();
     reader.onload = () => {
       const dataUrl = reader.result as string;
       const img = new Image();
-      img.onload = () =>
+      img.onload = () => {
         setPicked({
           dataUrl,
           name: file.name,
@@ -42,8 +44,17 @@ export default function UploadModal({ onClose }: { onClose: () => void }) {
           width: img.naturalWidth,
           height: img.naturalHeight,
         });
-      img.onerror = () => setError('Could not read that image.');
+        setReading(false);
+      };
+      img.onerror = () => {
+        setError('Could not read that image.');
+        setReading(false);
+      };
       img.src = dataUrl;
+    };
+    reader.onerror = () => {
+      setError('Could not read that file.');
+      setReading(false);
     };
     reader.readAsDataURL(file);
   };
@@ -93,7 +104,12 @@ export default function UploadModal({ onClose }: { onClose: () => void }) {
           onDragLeave={() => setDragging(false)}
           onDrop={onDrop}
         >
-          {picked ? (
+          {reading ? (
+            <>
+              <span className="spinner" />
+              <p className="upload-drop-title">Reading image…</p>
+            </>
+          ) : picked ? (
             <img className="upload-preview" src={picked.dataUrl} alt="" />
           ) : (
             <>

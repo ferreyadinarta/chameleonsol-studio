@@ -27,15 +27,17 @@ const ORBIT_TARGET: [number, number, number] = [0, 0.9, 0];
 const BACKDROP_AZIMUTH_0 = Math.atan2(3.5, 5.5);
 const BACKDROP_ORBIT_RANGE = Math.PI / 4; // ±45°
 
-// 3D brush cursor — ring + crosshair that sits ON the surface and tilts to the
-// surface normal. White shapes with a dark outline so it's always visible
-// regardless of the paint color underneath, and a constant world size whether
-// you're over the figure or off it.
+// 3D brush cursor that sits ON the surface and tilts to the surface normal:
+// a thin ring marks the exact brush size, and a small filled dot at dead
+// center marks the exact point that will be painted — in the actual paint
+// color, so the cursor doubles as a live preview of the dab about to land.
+// The old crosshair ("+") only marked a rough area (two long lines crossing
+// somewhere near the middle); a single dot is unambiguous about where paint
+// actually lands, and looking like a dab of paint reads more like a brush.
 function BrushDecal() {
   const ref = useRef<THREE.Group>(null);
-  const crossRef = useRef<THREE.Group>(null);
-  // Brush = white ring + upright crosshair. Eraser = amber ring + an X mark,
-  // so the two tools are unmistakable at a glance, not just by color.
+  // Ring: white for brush, amber for eraser, so the two tools are
+  // unmistakable at a glance, not just by the center dot's color.
   const light = useMemo(
     () =>
       new THREE.MeshBasicMaterial({
@@ -61,6 +63,33 @@ function BrushDecal() {
       }),
     [],
   );
+  // Center dot: the actual paint color for the brush (a true preview of what
+  // will land), amber to match the ring for the eraser (nothing to preview).
+  const dot = useMemo(
+    () =>
+      new THREE.MeshBasicMaterial({
+        transparent: true,
+        opacity: 1,
+        side: THREE.DoubleSide,
+        depthTest: false,
+        depthWrite: false,
+        toneMapped: false,
+      }),
+    [],
+  );
+  const dotOutline = useMemo(
+    () =>
+      new THREE.MeshBasicMaterial({
+        color: '#181613',
+        transparent: true,
+        opacity: 0.65,
+        side: THREE.DoubleSide,
+        depthTest: false,
+        depthWrite: false,
+        toneMapped: false,
+      }),
+    [],
+  );
   const q = useRef(new THREE.Quaternion());
   const up = useRef(new THREE.Vector3(0, 0, 1));
 
@@ -78,34 +107,23 @@ function BrushDecal() {
     const r = 0.06 + ps.brushSize * 0.6;
     g.scale.set(r, r, r);
     light.color.set(isEraser ? '#e8913a' : '#ffffff');
-    if (crossRef.current) crossRef.current.rotation.z = isEraser ? Math.PI / 4 : 0;
+    dot.color.set(isEraser ? '#e8913a' : ps.color);
   });
 
   return (
     <group ref={ref} visible={false}>
-      {/* rings are rotationally symmetric, so they don't need to be in the
-          rotating crosshair group */}
       <mesh material={dark} renderOrder={998}>
         <ringGeometry args={[0.8, 1.06, 48]} />
       </mesh>
       <mesh material={light} renderOrder={999}>
         <ringGeometry args={[0.85, 1.0, 48]} />
       </mesh>
-      {/* crosshair: a "+" for brush, rotated to an "×" for eraser */}
-      <group ref={crossRef}>
-        <mesh material={dark} renderOrder={998}>
-          <planeGeometry args={[1.9, 0.11]} />
-        </mesh>
-        <mesh material={dark} renderOrder={998}>
-          <planeGeometry args={[0.11, 1.9]} />
-        </mesh>
-        <mesh material={light} renderOrder={999}>
-          <planeGeometry args={[1.74, 0.05]} />
-        </mesh>
-        <mesh material={light} renderOrder={999}>
-          <planeGeometry args={[0.05, 1.74]} />
-        </mesh>
-      </group>
+      <mesh material={dotOutline} renderOrder={998}>
+        <circleGeometry args={[0.17, 24]} />
+      </mesh>
+      <mesh material={dot} renderOrder={999}>
+        <circleGeometry args={[0.12, 24]} />
+      </mesh>
     </group>
   );
 }
