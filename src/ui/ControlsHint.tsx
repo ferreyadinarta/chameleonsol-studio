@@ -24,6 +24,8 @@ function Key({ children }: { children: string }) {
 export default function ControlsHint() {
   const [open, setOpen] = useState(true);
   const paintMode = usePaintStore((s) => s.paintMode);
+  const tool = usePaintStore((s) => s.tool);
+  const resizable = paintMode && (tool === 'brush' || tool === 'eraser');
 
   return (
     <div className={open ? 'controls-hint' : 'controls-hint controls-hint--closed'}>
@@ -42,7 +44,23 @@ export default function ControlsHint() {
             <div className="controls-hint-row">
               <MouseIcon active="right" />
               <span>
-                <strong>Right-drag</strong> — Orbit camera
+                <strong>Right-drag</strong> — {resizable ? 'Brush size' : 'Orbit camera'}
+              </span>
+            </div>
+          )}
+          {paintMode && (
+            <div className="controls-hint-row controls-hint-row--keys">
+              <span className="ctrl-keys">
+                <Key>Shift</Key>
+              </span>
+              <span>+ drag — Orbit camera</span>
+            </div>
+          )}
+          {resizable && (
+            <div className="controls-hint-row">
+              <MouseIcon active="middle" />
+              <span>
+                <strong>Middle-drag</strong> — Orbit camera
               </span>
             </div>
           )}
@@ -73,6 +91,13 @@ export default function ControlsHint() {
                 </span>
                 <span>Hold — Eraser</span>
               </div>
+              {/* <div className="controls-hint-row controls-hint-row--keys">
+                <span className="ctrl-keys">
+                  <Key>[</Key>
+                  <Key>]</Key>
+                </span>
+                <span>Brush size (alternate)</span>
+              </div> */}
             </>
           )}
           <div className="controls-hint-row controls-hint-row--keys">

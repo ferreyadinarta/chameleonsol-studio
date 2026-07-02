@@ -16,7 +16,6 @@ import './studio.css';
 function App() {
   const captureRef = useRef<(() => string | null) | null>(null);
   const paintMode = usePaintStore((s) => s.paintMode);
-  const bgImage = useStageStore((s) => s.bgImage);
   const wheelOpen = usePoseStore((s) => s.wheelOpen);
   const lockedPoseId = usePoseStore((s) => s.lockedPoseId);
   const currentLabel = POSES.find((p) => p.id === lockedPoseId)?.label ?? '';
@@ -63,6 +62,29 @@ function App() {
       window.removeEventListener('keydown', down);
       window.removeEventListener('keyup', up);
     };
+  }, []);
+
+  // [ and ] shrink/grow the brush — the standard shortcut in every paint app
+  // (Photoshop, Procreate, Krita), so no trip to the size slider is needed.
+  useEffect(() => {
+    const BRUSH_MIN = 0.02;
+    const BRUSH_MAX = 0.35;
+    const typing = () => {
+      const a = document.activeElement;
+      return !!a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA');
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== '[' && e.key !== ']') return;
+      if (typing()) return;
+      const ps = usePaintStore.getState();
+      if (!ps.paintMode) return;
+      e.preventDefault();
+      const step = (BRUSH_MAX - BRUSH_MIN) * 0.08;
+      const next = ps.brushSize + (e.key === ']' ? step : -step);
+      ps.setBrushSize(Math.min(BRUSH_MAX, Math.max(BRUSH_MIN, next)));
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
   }, []);
 
   // WASD move the character, Z/X move it near/far, Q/E rotate it (turntable).
@@ -126,7 +148,6 @@ function App() {
       </header>
 
       <div className={paintMode ? 'studio-stage studio-stage--painting' : 'studio-stage'}>
-        {bgImage && <img id="stage-bg" className="studio-bg-image" src={bgImage} alt="" />}
         <Scene captureRef={captureRef} />
         <ReferenceCard />
         {!wheelOpen && <StagePanel />}

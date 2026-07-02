@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react';
 import * as THREE from 'three';
-import { useThree } from '@react-three/fiber';
+import { useFrame, useThree } from '@react-three/fiber';
 import { usePaintStore } from '../store/usePaintStore';
-import { paintStroke, sampleAlbedo, resetCanvases, paintableMeshes, TEX_SIZE, type PaintCanvases } from './PaintablePart';
+import { paintStroke, resetCanvases, paintableMeshes, TEX_SIZE, type PaintCanvases } from './PaintablePart';
 import { spawnPaintBlobs } from './PaintBlobs';
 import { useStageStore } from '../store/useStageStore';
 import { ensureBgSampler, sampleBgAt } from '../utils/bgSampler';
@@ -13,6 +13,9 @@ type GestureSnapshot = Map<THREE.Mesh, { albedo: ImageData; orm: ImageData }>;
 
 const UNDO_LIMIT = 20;
 
+const BRUSH_MIN = 0.02;
+const BRUSH_MAX = 0.35;
+
 export default function PaintController() {
   const { gl, camera, scene } = useThree();
   const paintingRef = useRef(false);
@@ -20,20 +23,36 @@ export default function PaintController() {
   const pointer = useRef(new THREE.Vector2());
   const undoStackRef = useRef<GestureSnapshot[]>([]);
   const currentGestureRef = useRef<GestureSnapshot | null>(null);
+  // Raw pointermove events just queue points here; the actual raycast + canvas
+  // draw work happens once per rendered frame (see useFrame below). Without
+  // this, a high-poll-rate mouse (500-1000Hz on many Windows machines, vs.
+  // ~60-125Hz for most trackpads) fires the same expensive work many times
+  // between two rendered frames for zero visual benefit — only the last state
+  // before a render is ever seen — which was the source of paint-mode lag,
+  // worse the weaker the CPU.
+  const pendingPointsRef = useRef<{ x: number; y: number }[]>([]);
+  const drainRef = useRef<() => void>(() => {});
+
+  useFrame(() => {
+    if (pendingPointsRef.current.length) drainRef.current();
+  });
 
   useEffect(() => {
     const dom = gl.domElement;
     let lastPaintX = 0;
     let lastPaintY = 0;
 
-    // Space is reserved for camera pan (matches Scene's OrbitControls
-    // mapping) — tracked locally so paint never fights the pan drag.
+    // Space is reserved for camera pan and Shift for orbit (matches Scene's
+    // OrbitControls mapping) — tracked locally so paint never fights those.
     let spaceDown = false;
+    let shiftDown = false;
     const spaceKeyDown = (e: KeyboardEvent) => {
       if (e.code === 'Space') spaceDown = true;
+      if (e.key === 'Shift') shiftDown = true;
     };
     const spaceKeyUp = (e: KeyboardEvent) => {
       if (e.code === 'Space') spaceDown = false;
+      if (e.key === 'Shift') shiftDown = false;
     };
     window.addEventListener('keydown', spaceKeyDown);
     window.addEventListener('keyup', spaceKeyUp);
@@ -95,10 +114,36 @@ export default function PaintController() {
       return hits.find((h) => h.object.userData.paintable || h.object.userData.sampleColor);
     };
 
+    // Right-drag resizes the brush — matches the reference game: drag right
+    // to grow, left to shrink. The 3D ring cursor is frozen at the point
+    // where the drag started so you can watch it grow/shrink in place.
+    // Pointer Lock hides the OS cursor and reports only relative movement
+    // for the duration of the drag, so the cursor doesn't visibly fly across
+    // the screen and jump to a new spot once you release the button.
+    let resizing = false;
+    let resizeAccumX = 0;
+    let resizeStartSize = 0;
+
     const onDown = (e: PointerEvent) => {
-      if (e.button !== 0 || spaceDown) return; // Space+drag is reserved for camera pan
       const { paintMode, tool } = usePaintStore.getState();
       if (!paintMode) return;
+      const resizable = tool === 'brush' || tool === 'eraser';
+
+      if (e.button === 2 && resizable) {
+        e.preventDefault();
+        resizing = true;
+        resizeAccumX = 0;
+        resizeStartSize = usePaintStore.getState().brushSize;
+        const hit = castPaintable(e.clientX, e.clientY);
+        if (hit) setBrushHoverFromHit(hit);
+        else fallbackBrushHover();
+        // Best-effort: resizing works fine off relative movementX even if the
+        // browser refuses the lock (e.g. no genuine user gesture context).
+        void dom.requestPointerLock?.()?.catch?.(() => {});
+        return;
+      }
+
+      if (e.button !== 0 || spaceDown || shiftDown) return; // Space/Shift+drag are reserved for camera controls
 
       if (tool === 'eyedropper') {
         const hex = sampleAt(e.clientX, e.clientY);
@@ -110,23 +155,33 @@ export default function PaintController() {
       if (hit && hit.uv) {
         paintingRef.current = true;
         currentGestureRef.current = new Map();
+        pendingPointsRef.current.length = 0;
         lastPaintX = e.clientX;
         lastPaintY = e.clientY;
         applyStroke(hit.object as THREE.Mesh, hit.uv, hit);
       }
     };
 
+    // Reads the exact rendered pixel from the WebGL framebuffer (requires
+    // preserveDrawingBuffer, already on for PFP capture). This is what makes
+    // the eyedropper accurate: sampling the underlying paint texture directly
+    // would return the flat, unlit hex, which can visibly differ from what's
+    // on screen once shading/gradient is applied to the model.
+    const pixelBuf = new Uint8Array(4);
+    const readGLPixel = (clientX: number, clientY: number): string => {
+      const rect = dom.getBoundingClientRect();
+      const px = Math.round(((clientX - rect.left) / rect.width) * dom.width);
+      const py = Math.round(((clientY - rect.top) / rect.height) * dom.height);
+      const ctx = gl.getContext();
+      ctx.readPixels(px, dom.height - py - 1, 1, 1, ctx.RGBA, ctx.UNSIGNED_BYTE, pixelBuf);
+      const toHex = (n: number) => n.toString(16).padStart(2, '0');
+      return `#${toHex(pixelBuf[0])}${toHex(pixelBuf[1])}${toHex(pixelBuf[2])}`;
+    };
+
     let hoverScheduled = false;
     const sampleAt = (clientX: number, clientY: number): string | null => {
       const hit = castAny(clientX, clientY);
-      if (hit) {
-        if (hit.object.userData.paintable && hit.uv) {
-          return sampleAlbedo(hit.object.userData.canvases as PaintCanvases, hit.uv);
-        }
-        if (hit.object.userData.sampleColor) {
-          return hit.object.userData.sampleColor();
-        }
-      }
+      if (hit) return readGLPixel(clientX, clientY);
       // missed the 3D scene — sample the uploaded background image if present
       const bg = useStageStore.getState().bgImage;
       if (bg) {
@@ -173,6 +228,15 @@ export default function PaintController() {
       const { paintMode, tool } = usePaintStore.getState();
       if (!paintMode) return;
 
+      if (resizing) {
+        // Under pointer lock, clientX/Y stay frozen — movementX carries the
+        // real relative motion regardless of lock, so use that exclusively.
+        resizeAccumX += e.movementX;
+        const next = resizeStartSize + (resizeAccumX / 260) * (BRUSH_MAX - BRUSH_MIN);
+        usePaintStore.getState().setBrushSize(Math.min(BRUSH_MAX, Math.max(BRUSH_MIN, next)));
+        return;
+      }
+
       if (tool === 'eyedropper') {
         if (!hoverScheduled) {
           hoverScheduled = true;
@@ -185,34 +249,16 @@ export default function PaintController() {
         return;
       }
 
-      // Painting: paint along the actual path (using the browser's coalesced
-      // events + screen-space interpolation) instead of only the point where
-      // this event landed — a fast swipe otherwise leaves gaps and feels like
-      // it "missed" where the cursor was.
+      // Painting: queue the point(s) along the actual path (using the
+      // browser's coalesced events, so a fast swipe isn't missed between
+      // dispatched events) — the raycast + draw work itself happens once per
+      // rendered frame in drainPending, not here.
       if (paintingRef.current) {
         const events =
           typeof e.getCoalescedEvents === 'function' && e.getCoalescedEvents().length
             ? e.getCoalescedEvents()
             : [e];
-        let lastHit: THREE.Intersection | null = null;
-        for (const ev of events) {
-          const dx = ev.clientX - lastPaintX;
-          const dy = ev.clientY - lastPaintY;
-          const dist = Math.hypot(dx, dy);
-          const steps = Math.min(8, Math.max(1, Math.round(dist / 10)));
-          for (let i = 1; i <= steps; i++) {
-            const x = lastPaintX + (dx * i) / steps;
-            const y = lastPaintY + (dy * i) / steps;
-            const hit = castPaintable(x, y);
-            if (hit && hit.uv) {
-              applyStroke(hit.object as THREE.Mesh, hit.uv, hit);
-              lastHit = hit;
-            }
-          }
-          lastPaintX = ev.clientX;
-          lastPaintY = ev.clientY;
-        }
-        if (lastHit) setBrushHoverFromHit(lastHit);
+        for (const ev of events) pendingPointsRef.current.push({ x: ev.clientX, y: ev.clientY });
         return;
       }
 
@@ -231,11 +277,45 @@ export default function PaintController() {
 
     const onLeave = () => {
       usePaintStore.getState().setEyedropperHover(null);
-      brushHover.active = false;
+      if (!resizing) brushHover.active = false;
+    };
+
+    // Runs once per rendered frame (via useFrame above) instead of once per
+    // raw pointermove/coalesced event — see pendingPointsRef comment.
+    drainRef.current = () => {
+      if (!paintingRef.current) {
+        pendingPointsRef.current.length = 0;
+        return;
+      }
+      const pts = pendingPointsRef.current;
+      if (!pts.length) return;
+      let lastHit: THREE.Intersection | null = null;
+      for (const pt of pts) {
+        const dx = pt.x - lastPaintX;
+        const dy = pt.y - lastPaintY;
+        const dist = Math.hypot(dx, dy);
+        const steps = Math.min(8, Math.max(1, Math.round(dist / 10)));
+        for (let i = 1; i <= steps; i++) {
+          const x = lastPaintX + (dx * i) / steps;
+          const y = lastPaintY + (dy * i) / steps;
+          const hit = castPaintable(x, y);
+          if (hit && hit.uv) {
+            applyStroke(hit.object as THREE.Mesh, hit.uv, hit);
+            lastHit = hit;
+          }
+        }
+        lastPaintX = pt.x;
+        lastPaintY = pt.y;
+      }
+      pts.length = 0;
+      if (lastHit) setBrushHoverFromHit(lastHit);
     };
 
     const onUp = () => {
+      if (resizing && document.pointerLockElement === dom) document.exitPointerLock();
+      resizing = false;
       paintingRef.current = false;
+      pendingPointsRef.current.length = 0;
       const gesture = currentGestureRef.current;
       currentGestureRef.current = null;
       if (gesture && gesture.size > 0) {
@@ -243,6 +323,16 @@ export default function PaintController() {
         if (undoStackRef.current.length > UNDO_LIMIT) undoStackRef.current.shift();
       }
     };
+
+    // The canvas is a paint surface, not a page — no native right-click menu.
+    const onContextMenu = (e: MouseEvent) => e.preventDefault();
+
+    // If the browser force-releases the lock mid-drag (e.g. Escape, or the
+    // tab losing focus), stop resizing cleanly instead of getting stuck.
+    const onPointerLockChange = () => {
+      if (document.pointerLockElement !== dom) resizing = false;
+    };
+    document.addEventListener('pointerlockchange', onPointerLockChange);
 
     function applyStroke(mesh: THREE.Mesh, uv: THREE.Vector2, hit: THREE.Intersection) {
       const gesture = currentGestureRef.current;
@@ -272,16 +362,20 @@ export default function PaintController() {
     dom.addEventListener('pointerdown', onDown);
     dom.addEventListener('pointermove', onMove);
     dom.addEventListener('pointerleave', onLeave);
+    dom.addEventListener('contextmenu', onContextMenu);
     window.addEventListener('pointerup', onUp);
     return () => {
       dom.removeEventListener('pointerdown', onDown);
       dom.removeEventListener('pointermove', onMove);
       dom.removeEventListener('pointerleave', onLeave);
+      dom.removeEventListener('contextmenu', onContextMenu);
+      document.removeEventListener('pointerlockchange', onPointerLockChange);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('keydown', spaceKeyDown);
       window.removeEventListener('keyup', spaceKeyUp);
       unsubUndo();
       unsubClear();
+      drainRef.current = () => {};
     };
   }, [gl, camera, scene]);
 

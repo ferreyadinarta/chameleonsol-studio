@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useStageStore } from '../store/useStageStore';
+import { STOCK_BACKGROUNDS } from '../utils/stockBackgrounds';
 import UploadModal from './UploadModal';
 
 export default function StagePanel() {
@@ -8,6 +9,7 @@ export default function StagePanel() {
   const { setBgImage, setCharScale, resetTransform } = useStageStore();
   const [open, setOpen] = useState(true);
   const [uploadOpen, setUploadOpen] = useState(false);
+  const activeStock = STOCK_BACKGROUNDS.find((s) => s.url === bgImage)?.id ?? null;
 
   return (
     <div className="stage-panel">
@@ -27,6 +29,21 @@ export default function StagePanel() {
                 Remove
               </button>
             )}
+          </div>
+
+          <div className="stage-field">
+            <span>Stock backgrounds</span>
+            <div className="stock-scene-row">
+              {STOCK_BACKGROUNDS.map((s) => (
+                <button
+                  key={s.id}
+                  className={activeStock === s.id ? 'stock-scene-swatch stock-scene-swatch--active' : 'stock-scene-swatch'}
+                  style={{ background: s.swatch }}
+                  title={s.label}
+                  onClick={() => setBgImage(activeStock === s.id ? null : s.url)}
+                />
+              ))}
+            </div>
           </div>
 
           <label className="stage-field">

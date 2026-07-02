@@ -382,6 +382,38 @@ body,
   padding: 10px;
 }
 
+.depth-processing-badge {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  background: rgba(28, 26, 22, 0.82);
+  border-radius: 999px;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.depth-processing-spinner {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  animation: depth-spin 0.7s linear infinite;
+}
+
+@keyframes depth-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .studio-bg-image {
   position: absolute;
   inset: 0;
@@ -475,6 +507,26 @@ body,
 
 .stage-field input[type='range'] {
   width: 100%;
+}
+
+.stock-scene-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.stock-scene-swatch {
+  width: 34px;
+  height: 34px;
+  border-radius: 9px;
+  border: 2px solid var(--line);
+  cursor: pointer;
+  padding: 0;
+}
+
+.stock-scene-swatch--active {
+  border-color: var(--accent, #e8533a);
+  box-shadow: 0 0 0 2px rgba(232, 83, 58, 0.25);
 }
 
 .stage-hint {

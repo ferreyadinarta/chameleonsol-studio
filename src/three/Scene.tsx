@@ -5,10 +5,18 @@ import { OrbitControls } from '@react-three/drei';
 import CharacterView from './CharacterView';
 import PaintController from './PaintController';
 import PaintBlobs from './PaintBlobs';
+import PhotoBoard from './PhotoBoard';
 import { brushHover } from './brushHover';
 import { cameraRig } from './cameraRig';
 import { usePaintStore } from '../store/usePaintStore';
 import { useStageStore } from '../store/useStageStore';
+
+// Stable reference for OrbitControls' `target` prop. R3F re-applies a prop
+// whenever its reference changes, and Scene re-renders often (spaceDown,
+// shiftDown, tool, paintMode); an inline `[0, 0.9, 0]` literal would be a new
+// array every render, so OrbitControls kept snapping the target back to this
+// value and silently erasing any pan the instant something else re-rendered.
+const ORBIT_TARGET: [number, number, number] = [0, 0.9, 0];
 
 // 3D brush cursor — ring + crosshair that sits ON the surface and tilts to the
 // surface normal. White shapes with a dark outline so it's always visible
@@ -143,30 +151,6 @@ function CharacterRig() {
   );
 }
 
-// Keeps the flat backdrop locked to the 3D scene: it scales with camera zoom
-// and shifts with camera pan, so the whole composition zooms/pans together.
-function CameraSync() {
-  const { camera, gl } = useThree();
-  const refDist = useRef(0);
-  const target = useRef(new THREE.Vector3());
-  const ndc = useRef(new THREE.Vector3());
-  useFrame(() => {
-    const el = document.getElementById('stage-bg') as HTMLImageElement | null;
-    if (!el) return;
-    target.current.set(0, 0.9, 0);
-    if (cameraRig.controls) target.current.copy(cameraRig.controls.target);
-    const dist = camera.position.distanceTo(target.current);
-    if (!refDist.current) refDist.current = dist;
-    ndc.current.copy(target.current).project(camera);
-    const rect = gl.domElement.getBoundingClientRect();
-    const tx = ndc.current.x * 0.5 * rect.width;
-    const ty = -ndc.current.y * 0.5 * rect.height;
-    const scale = refDist.current / dist;
-    el.style.transform = `translate(${tx}px, ${ty}px) scale(${scale})`;
-  });
-  return null;
-}
-
 type Props = {
   captureRef: { current: (() => string | null) | null };
 };
@@ -174,6 +158,9 @@ type Props = {
 export default function Scene({ captureRef }: Props) {
   const bgImage = useStageStore((s) => s.bgImage);
   const paintMode = usePaintStore((s) => s.paintMode);
+  const tool = usePaintStore((s) => s.tool);
+  const resizingTool = paintMode && (tool === 'brush' || tool === 'eraser');
+  const hasBackdrop = !!bgImage;
 
   // Hold Space to pan — the same convention as Figma/Photoshop/Illustrator,
   // which reads more natural than a Shift-modifier or middle-click (not every
@@ -198,6 +185,21 @@ export default function Scene({ captureRef }: Props) {
     };
   }, []);
 
+  // Hold Shift to orbit while painting — middle-drag fills the same role but
+  // most trackpads have no middle button at all, so this is the accessible
+  // fallback (same "modifier + drag" pattern as Space for pan).
+  const [shiftDown, setShiftDown] = useState(false);
+  useEffect(() => {
+    const down = (e: KeyboardEvent) => e.key === 'Shift' && setShiftDown(true);
+    const up = (e: KeyboardEvent) => e.key === 'Shift' && setShiftDown(false);
+    window.addEventListener('keydown', down);
+    window.addEventListener('keyup', up);
+    return () => {
+      window.removeEventListener('keydown', down);
+      window.removeEventListener('keyup', up);
+    };
+  }, []);
+
   return (
     <Canvas
       flat
@@ -205,53 +207,41 @@ export default function Scene({ captureRef }: Props) {
       camera={{ position: [3.5, 2.2, 5.5], fov: 36 }}
       dpr={[1, 2]}
       onCreated={(state) => {
-        // Composite the flat HTML backdrop (if any) under the WebGL render so
-        // a saved PFP includes the reference background.
-        captureRef.current = () => {
-          const glCanvas = state.gl.domElement;
-          const bg = document.getElementById('stage-bg') as HTMLImageElement | null;
-          if (!bg || !bg.complete || !bg.naturalWidth) return glCanvas.toDataURL('image/png');
-          const out = document.createElement('canvas');
-          out.width = glCanvas.width;
-          out.height = glCanvas.height;
-          const ctx = out.getContext('2d')!;
-          // contain-fit the background (whole image visible, like on screen)
-          const scale = Math.min(out.width / bg.naturalWidth, out.height / bg.naturalHeight);
-          const dw = bg.naturalWidth * scale;
-          const dh = bg.naturalHeight * scale;
-          ctx.drawImage(bg, (out.width - dw) / 2, (out.height - dh) / 2, dw, dh);
-          ctx.drawImage(glCanvas, 0, 0, out.width, out.height);
-          return out.toDataURL('image/png');
-        };
+        // The backdrop (PhotoBoard) is a real 3D mesh now, already part of the
+        // WebGL render, so capturing a PFP is just reading the canvas.
+        captureRef.current = () => state.gl.domElement.toDataURL('image/png');
       }}
     >
-      {!bgImage && <color attach="background" args={['#e9e4d8']} />}
+      {/* Always set: a photo/stock backdrop is a finite plane, so orbiting or
+          panning far enough can reveal empty space past its edges — without
+          this it renders as a jarring black void instead of a neutral fill. */}
+      <color attach="background" args={['#e9e4d8']} />
       {/* Ambient dominates so painted colors stay close to their exact hex;
           the soft directional light (no shadow map) only adds a whisper of
           gradient across the form so the 3D shape still reads up close. */}
       <ambientLight intensity={2.4} />
       <directionalLight position={[2, 3.2, 2.6]} intensity={0.7} />
 
-      {!bgImage && (
+      {!hasBackdrop && (
         <>
           <CamoSurface position={[0, 0, -1.4]} rotation={[0, 0, 0]} size={[6, 4]} color="#7fa893" />
           <CamoSurface position={[0, -0.001, 0]} rotation={[-Math.PI / 2, 0, 0]} size={[6, 6]} color="#b89766" />
         </>
       )}
+      {bgImage && <PhotoBoard imageUrl={bgImage} />}
 
       <CharacterRig />
 
       <PaintController />
       <PaintBlobs />
       <BrushDecal />
-      <CameraSync />
 
       <OrbitControls
         makeDefault
         ref={(c) => {
           cameraRig.controls = (c as unknown as typeof cameraRig.controls) ?? null;
         }}
-        target={[0, 0.9, 0]}
+        target={ORBIT_TARGET}
         minDistance={0.4}
         maxDistance={30}
         zoomSpeed={1.4}
@@ -262,12 +252,29 @@ export default function Scene({ captureRef }: Props) {
         maxPolarAngle={Math.PI * 0.85}
         mouseButtons={{
           // Drag orbits the camera — the single primary gesture. In paint
-          // mode, left-drag paints instead, so right-drag orbits there.
-          // Hold Space to pan (Figma/Photoshop convention); middle-drag still
-          // pans too as a bonus for anyone with a 3-button mouse.
-          LEFT: (spaceDown ? THREE.MOUSE.PAN : paintMode ? -1 : THREE.MOUSE.ROTATE) as THREE.MOUSE,
-          MIDDLE: THREE.MOUSE.PAN,
-          RIGHT: THREE.MOUSE.ROTATE,
+          // mode, left-drag paints instead, so right-drag orbits there —
+          // except with the brush/eraser, where right-drag resizes the brush
+          // instead (matching the reference game). That leaves no free button
+          // for orbit while a paint tool is selected, so middle-drag becomes
+          // orbit there instead of pan (Space+drag already covers pan in
+          // every mode, so the middle button isn't needed for that here).
+          // Shift+drag also orbits while painting — the trackpad-friendly
+          // alternative to middle-drag, since most trackpads have no middle
+          // button to hold at all. Quirk: three-stdlib's OrbitControls has a
+          // hardcoded rule that auto-swaps ROTATE<->PAN whenever Shift/Ctrl/
+          // Meta is held, regardless of the mapping below — so to make Shift
+          // actually RESULT in orbit, we must hand it PAN here and let that
+          // built-in swap flip it to rotate for us (passing ROTATE directly
+          // would immediately get swapped back to pan, which was the bug).
+          LEFT: (spaceDown
+            ? THREE.MOUSE.PAN
+            : paintMode
+              ? shiftDown
+                ? THREE.MOUSE.PAN
+                : -1
+              : THREE.MOUSE.ROTATE) as THREE.MOUSE,
+          MIDDLE: (resizingTool ? THREE.MOUSE.ROTATE : THREE.MOUSE.PAN) as THREE.MOUSE,
+          RIGHT: (resizingTool ? -1 : THREE.MOUSE.ROTATE) as THREE.MOUSE,
         }}
       />
       <GrabCursor active={spaceDown} />
